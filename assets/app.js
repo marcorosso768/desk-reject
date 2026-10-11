@@ -28,6 +28,9 @@
                    "KeyA", "KeyS", "KeyD", "KeyF", "KeyZ", "KeyX", "KeyC", "KeyV"];
   var PAD_LABELS = "1234QWERASDFZXCV".split("");
   var LONG_PRESS_MS = 550;
+  // Where the code lives, for the "Source code" link when the page is served
+  // from a custom domain (e.g. marcorosso.com/desk-reject/).
+  var HOME_REPO = "https://github.com/marcorosso768/desk-reject";
 
   var $ = function (id) { return document.getElementById(id); };
 
@@ -1122,6 +1125,7 @@
     var repo = location.pathname.split("/").filter(Boolean)[0];
     if (window.deskReject && window.deskReject.repoURL) link.href = window.deskReject.repoURL;
     else if (gh && repo) link.href = "https://github.com/" + gh[1] + "/" + repo;
+    else if (/^https?:$/.test(location.protocol) && !/^(localhost|127\.|\[::1\])/.test(location.hostname)) link.href = HOME_REPO;
     else link.replaceWith(document.createTextNode(""));
 
     $("random-btn").addEventListener("click", playRandom);
