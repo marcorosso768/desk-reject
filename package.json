@@ -60,7 +60,8 @@
       ],
       "extendInfo": {
         "NSMicrophoneUsageDescription": "Desk Reject uses the microphone only when you press Record on a comment."
-      }
+      },
+      "artifactName": "${productName}-${version}-mac-${arch}.${ext}"
     },
     "dmg": {
       "title": "Desk Reject"
