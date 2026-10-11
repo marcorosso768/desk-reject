@@ -1,5 +1,5 @@
 /* Offline cache for the app shell. Bump VERSION when any listed file changes. */
-const VERSION = "desk-reject-v20";
+const VERSION = "desk-reject-v21";
 const SHELL = [
   "./",
   "index.html",
@@ -8,7 +8,8 @@ const SHELL = [
   "assets/app.js",
   "assets/presets.js",
   "assets/icons/icon.svg",
-  "assets/icons/icon-192.png",
+  "assets/icons/icon-192-dark.png",
+  "assets/icons/apple-touch-icon-dark.png",
   "assets/fonts/cmu-serif-500-roman.woff2",
   "assets/fonts/cmu-serif-500-italic.woff2",
   "assets/fonts/cmu-serif-700-roman.woff2",
