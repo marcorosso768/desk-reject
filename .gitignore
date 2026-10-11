@@ -1,0 +1,7 @@
+.DS_Store
+*.swp
+node_modules/
+desk-reject-board.json
+.import.tgz
+dist/
+electron/repo.json

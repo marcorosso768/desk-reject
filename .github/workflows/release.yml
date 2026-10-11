@@ -1,0 +1,42 @@
+name: Release desktop app
+
+# Push a tag such as v1.0.1 (after `npm version patch`) to build the macOS,
+# Windows and Linux apps and attach them to a GitHub release.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        # macOS 26 with Xcode 26: needed to compile the Icon Composer icon (light/dark) with actool.
+        os: [macos-26, windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Xcode 26 (actool for the app icon)
+        if: runner.os == 'macOS'
+        run: |
+          XC=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1)
+          if [ -n "$XC" ]; then sudo xcode-select -s "$XC"; fi
+          xcodebuild -version
+          xcrun actool --version
+      - run: npm ci
+      - name: Record the repository for in-app update checks
+        shell: bash
+        run: echo "{\"repo\":\"${GITHUB_REPOSITORY}\"}" > electron/repo.json
+      - name: Build and publish
+        run: npx electron-builder --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"

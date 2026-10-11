@@ -1,0 +1,91 @@
+{
+  "name": "desk-reject",
+  "productName": "Desk Reject",
+  "version": "1.0.0",
+  "description": "A Reviewer 2 soundboard for research meetings.",
+  "author": "Marco Rosso",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/marcorosso768/desk-reject.git"
+  },
+  "main": "electron/main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder",
+    "dist:mac": "electron-builder --mac",
+    "dist:win": "electron-builder --win",
+    "dist:linux": "electron-builder --linux"
+  },
+  "devDependencies": {
+    "electron": "^43.7.0",
+    "electron-builder": "^26.16.1"
+  },
+  "build": {
+    "appId": "io.github.deskreject",
+    "productName": "Desk Reject",
+    "copyright": "Copyright © 2026 Marco Rosso",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "index.html",
+      "manifest.webmanifest",
+      "package.json",
+      "assets/**",
+      "!assets/icons/src/**",
+      "electron/**"
+    ],
+    "mac": {
+      "category": "public.app-category.entertainment",
+      "icon": "build/icon-mac.png",
+      "identity": null,
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ],
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "Desk Reject uses the microphone only when you press Record on a comment."
+      }
+    },
+    "dmg": {
+      "title": "Desk Reject"
+    },
+    "win": {
+      "icon": "build/icon.png",
+      "target": [
+        "nsis"
+      ]
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false
+    },
+    "linux": {
+      "icon": "build/icon.png",
+      "target": [
+        "AppImage"
+      ],
+      "category": "Game"
+    },
+    "publish": {
+      "provider": "github",
+      "releaseType": "release"
+    },
+    "afterPack": "./build-scripts/afterPack.js"
+  }
+}
