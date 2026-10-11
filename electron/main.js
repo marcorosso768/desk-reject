@@ -83,6 +83,51 @@ function newer(a, b) { // is version a > version b ?
   return false;
 }
 
+// The installer that fits this computer: dmg for the right Mac chip, exe on
+// Windows, AppImage on Linux. A Mac with Apple Silicon running the Intel build
+// under Rosetta still gets the arm64 one.
+function pickAsset(assets) {
+  const files = assets.filter((a) => !/\.blockmap$|\.yml$/i.test(a.name));
+  if (process.platform === "darwin") {
+    const arm = process.arch === "arm64" || app.runningUnderARM64Translation;
+    const dmgs = files.filter((a) => /\.dmg$/i.test(a.name));
+    return arm ? dmgs.find((a) => /arm64/i.test(a.name))
+               : dmgs.find((a) => /x64/i.test(a.name)) || dmgs.find((a) => !/arm64/i.test(a.name));
+  }
+  if (process.platform === "win32") return files.find((a) => /\.exe$/i.test(a.name));
+  return files.find((a) => /\.AppImage$/i.test(a.name));
+}
+
+// Download with the progress shown on the Dock / taskbar icon, then open the
+// installer: on a Mac the dmg window, where the app is dragged onto Applications.
+function downloadInstaller(asset, version) {
+  if (!win) return;
+  const ses = win.webContents.session;
+  ses.once("will-download", (_e, item) => {
+    const target = path.join(app.getPath("downloads"), asset.name);
+    item.setSavePath(target);
+    item.on("updated", () => {
+      const total = item.getTotalBytes();
+      if (win && total) win.setProgressBar(item.getReceivedBytes() / total);
+    });
+    item.once("done", async (_e2, state) => {
+      if (win) win.setProgressBar(-1);
+      if (state !== "completed") {
+        dialog.showMessageBox(win, { type: "warning", message: "The download did not finish", detail: "Try again with Check for Updates…, or download it from the Releases page." });
+        return;
+      }
+      await shell.openPath(target);
+      const how = process.platform === "darwin"
+        ? "In the window that opened, drag Desk Reject onto Applications and choose Replace, then quit this copy and open the new one. The first time, macOS may ask again to confirm in Privacy & Security."
+        : process.platform === "win32"
+          ? "The installer has started: follow it, and Desk Reject reopens updated."
+          : "The new AppImage is in your Downloads folder: make it executable and use it instead of this one.";
+      dialog.showMessageBox(win, { type: "info", message: "Desk Reject " + version + " downloaded", detail: how });
+    });
+  });
+  win.webContents.downloadURL(asset.browser_download_url);
+}
+
 const prefsFile = () => path.join(app.getPath("userData"), "update-prefs.json");
 function readPrefs() { try { return JSON.parse(fs.readFileSync(prefsFile(), "utf8")); } catch (e) { return {}; } }
 function writePrefs(p) { try { fs.writeFileSync(prefsFile(), JSON.stringify(p)); } catch (e) { /* ignore */ } }
@@ -113,9 +158,13 @@ async function checkForUpdates(manual) {
       defaultId: 0,
       cancelId: 1,
       message: "Desk Reject " + latest + " is available",
-      detail: "You have version " + current + ". The download page opens in your browser; install the new version over this one."
+      detail: "You have version " + current + ". The installer is downloaded to your Downloads folder and opened for you."
     });
-    if (response === 0) shell.openExternal(rel.html_url || "https://github.com/" + repo + "/releases/latest");
+    if (response === 0) {
+      const asset = pickAsset(rel.assets || []);
+      if (asset) downloadInstaller(asset, latest);
+      else shell.openExternal(rel.html_url || "https://github.com/" + repo + "/releases/latest"); // nothing for this system yet
+    }
     if (response === 2) writePrefs(Object.assign(prefs, { skip: latest }));
   } catch (e) {
     if (manual) dialog.showMessageBox(win, { type: "warning", message: "Could not check for updates", detail: String(e.message || e) });
