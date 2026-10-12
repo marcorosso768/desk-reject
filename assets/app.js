@@ -47,7 +47,7 @@
   }
 
   function defaultSettings() {
-    return { voiceURI: null, rate: 1, pitch: 1, randomFrom: "all", allVoices: false, bank: "A" };
+    return { voiceURI: null, rate: 1, pitch: 1, randomFrom: "all", allVoices: false, bank: "A", globalKeys: false };
   }
 
   // Fill banks in order with the ids of comments flagged board: true (older
@@ -63,9 +63,41 @@
     return banks;
   }
 
+  // A session is one "manuscript" being refereed: its number, the round, and
+  // the comments played so far (for the referee report).
+  function newSession(prev) {
+    return {
+      ms: "DR-" + new Date().getFullYear() + "-" + String(Math.floor(Math.random() * 9000) + 1000),
+      round: 1,
+      title: prev ? prev.title : "",
+      presenter: prev ? prev.presenter : "",
+      started: new Date().toISOString(),
+      log: []
+    };
+  }
+
+  function sanitizeSession(raw) {
+    if (!raw || typeof raw !== "object" || typeof raw.ms !== "string") return newSession();
+    return {
+      ms: raw.ms.slice(0, 24),
+      round: Math.max(1, Math.min(99, parseInt(raw.round, 10) || 1)),
+      title: typeof raw.title === "string" ? raw.title.slice(0, 200) : "",
+      presenter: typeof raw.presenter === "string" ? raw.presenter.slice(0, 120) : "",
+      started: typeof raw.started === "string" ? raw.started : new Date().toISOString(),
+      log: (Array.isArray(raw.log) ? raw.log : []).filter(function (e) { return e && typeof e.text === "string"; }).slice(-500)
+        .map(function (e) { return { text: e.text.slice(0, 140), severity: SEVERITIES.indexOf(e.severity) >= 0 ? e.severity : "comment", t: e.t || "" }; })
+    };
+  }
+
+  function sanitizeBankNames(raw) {
+    var out = {};
+    BANKS.forEach(function (n) { if (raw && typeof raw[n] === "string" && raw[n].trim()) out[n] = raw[n].trim().slice(0, 30); });
+    return out;
+  }
+
   function fromPreset(preset) {
     var comments = preset.comments.map(function (c) {
-      return { id: uid(), text: c.text, severity: c.severity || "comment", random: c.random !== false };
+      return { id: uid(), text: c.text, severity: c.severity || "comment", random: c.random !== false, voice: null };
     });
     return {
       version: 2,
@@ -73,6 +105,8 @@
       lang: preset.lang || "en",
       comments: comments,
       banks: banksFromFlags(comments, preset.comments.map(function (c) { return c.board !== false; })),
+      bankNames: sanitizeBankNames(preset.bankNames),
+      session: newSession(),
       settings: defaultSettings()
     };
   }
@@ -88,7 +122,9 @@
         id: id,
         text: c.text.trim().slice(0, 140),
         severity: SEVERITIES.indexOf(c.severity) >= 0 ? c.severity : "comment",
-        random: c.random !== false
+        random: c.random !== false,
+        // reserved for per-comment voices (several languages on one board)
+        voice: typeof c.voice === "string" ? c.voice.slice(0, 40) : null
       };
     });
 
@@ -115,13 +151,16 @@
       lang: typeof raw.lang === "string" ? raw.lang.slice(0, 12) : "en",
       comments: comments,
       banks: banks,
+      bankNames: sanitizeBankNames(raw.bankNames),
+      session: sanitizeSession(raw.session),
       settings: {
         voiceURI: typeof s.voiceURI === "string" ? s.voiceURI : null,
         rate: clamp(Number(s.rate) || 1, 0.6, 1.6),
         pitch: clamp(Number(s.pitch) || 1, 0.5, 1.5),
         randomFrom: s.randomFrom === "board" ? "board" : "all",
         allVoices: !!s.allVoices,
-        bank: BANKS.indexOf(s.bank) >= 0 ? s.bank : "A"
+        bank: BANKS.indexOf(s.bank) >= 0 ? s.bank : "A",
+        globalKeys: !!s.globalKeys
       }
     };
   }
@@ -300,9 +339,10 @@
     synth.speak(u);
   }
 
-  function play(comment, btn) {
+  function play(comment, btn, opts) {
     stopAll();
     showVerdict(comment);
+    if (!(opts && opts.preview)) logComment(comment);
     if (btn) { playingBtn = btn; btn.classList.add("playing"); }
     var done = function () { if (btn) btn.classList.remove("playing"); if (playingBtn === btn) playingBtn = null; };
 
@@ -338,7 +378,17 @@
 
   // ------------------------------------------------------------- rendering
 
-  var round = 1;
+  function logComment(c) {
+    state.session.log.push({ text: c.text, severity: c.severity, t: new Date().toISOString() });
+    save();
+    renderMasthead();
+  }
+
+  function renderMasthead() {
+    var n = state.session.log.length;
+    $("ms-number").textContent = "Manuscript " + state.session.ms;
+    $("ms-round").textContent = state.session.round + (n ? " · " + n + " comment" + (n > 1 ? "s" : "") : "");
+  }
 
   function showVerdict(c) {
     var q = $("verdict-quote");
@@ -348,8 +398,6 @@
     void q.offsetWidth;
     q.classList.add("typeset");
     $("verdict-label").textContent = "Reviewer 2 writes:";
-    round += 1;
-    $("ms-round").textContent = String(round);
   }
 
   function attachPadGestures(btn, onTap, onHold) {
@@ -577,7 +625,7 @@
       lib.appendChild(li2);
     }
     renderBanks();
-    $("bank-label").textContent = "Bank " + bank();
+    $("bank-label").textContent = "Bank " + bank() + (state.bankNames && state.bankNames[bank()] ? " · " + state.bankNames[bank()] : "");
     document.body.classList.toggle("editing", editing);
     fitPads(); // after the editing class, which changes the room inside the pads
     $("edit-toggle").setAttribute("aria-pressed", String(editing));
@@ -808,7 +856,7 @@
     $("rec-start").addEventListener("click", startRecording);
     $("rec-play").addEventListener("click", function () {
       var c = byId(editingId) || { id: editingId, text: $("edit-text").value || "…", severity: $("edit-severity").value };
-      play(c, null);
+      play(c, null, { preview: true });
     });
     $("rec-delete").addEventListener("click", function () {
       var id = editingId;
@@ -975,6 +1023,13 @@
       dlg.showModal();
     });
     $("voice-picker").addEventListener("click", function () { toggleVoiceList(); });
+    if (window.deskReject && window.deskReject.setGlobalShortcuts) {
+      $("global-keys-box").hidden = false;
+      var mac = window.deskReject.platform === "darwin";
+      $("global-keys-combo").textContent = mac ? "Control + Option" : "Ctrl + Alt";
+      $("global-keys").checked = !!state.settings.globalKeys;
+      $("global-keys").addEventListener("change", function (e) { state.settings.globalKeys = e.target.checked; save(); applyGlobalKeys(); });
+    }
     $("voice-help").addEventListener("click", function () { $("voice-help-dialog").showModal(); });
     $("rate").addEventListener("input", function (e) { state.settings.rate = Number(e.target.value); $("rate-out").textContent = state.settings.rate.toFixed(2); save(); });
     $("pitch").addEventListener("input", function (e) { state.settings.pitch = Number(e.target.value); $("pitch-out").textContent = state.settings.pitch.toFixed(2); save(); });
@@ -992,8 +1047,10 @@
     $("reset-btn").addEventListener("click", function () {
       if (!window.confirm("Replace your board with the Reviewer 2 preset? Your comments, banks and recordings will be deleted.")) return;
       var keep = state.settings;
+      var keepSession = state.session;
       state = fromPreset(PRESETS[0]);
       state.settings = keep;
+      state.session = keepSession;
       state.settings.bank = "A";
       recClear().catch(function () {});
       recIds.clear();
@@ -1036,6 +1093,7 @@
         lang: state.lang,
         comments: state.comments,
         banks: state.banks,
+        bankNames: state.bankNames,
         recordings: recordings
       };
       var blob = new Blob([JSON.stringify(out, null, 2)], { type: "application/json" });
@@ -1067,12 +1125,388 @@
         });
         return Promise.all(jobs);
       }).then(function () {
+        b.session = state.session; // an imported board does not end the current manuscript
         state = b;
         commit();
         toast("Imported “" + b.name + "” with " + b.comments.length + " comments.");
       });
     }).catch(function () {
       toast("This file is not a Desk Reject board. Export one from Settings to see the format.");
+    });
+  }
+
+  // --------------------------------------------------------- referee report
+  // The comments played since the manuscript was opened become a decision
+  // letter. "Next round" keeps the manuscript and starts an empty round; "New
+  // manuscript" starts over with a new number.
+
+  var SEV_LABEL = { comment: "Comment", revise: "Revise", reject: "Reject" };
+  // The desktop app saves through the system's Save dialog; the web app downloads.
+  var desktopSave = !!(window.deskReject && window.deskReject.savePdf);
+  var PDF_LABEL = desktopSave ? "Save PDF" : "Download PDF";
+  var SITE_URL = "https://marcorosso.com/desk-reject/";
+
+  function decide(log) {
+    var n = log.length;
+    var count = { comment: 0, revise: 0, reject: 0 };
+    log.forEach(function (e) { count[e.severity] = (count[e.severity] || 0) + 1; });
+    var d;
+    if (n < 3) d = { label: "Accept", note: "Reviewer 2 fell asleep before reaching the third comment." };
+    else if (log.some(function (e) { return /desk reject/i.test(e.text); })) d = { label: "Desk reject", note: "The manuscript was desk rejected during the seminar. The editor did not object." };
+    else if (count.reject * 3 >= n) d = { label: "Reject", note: "At least a third of the comments call for rejection. The editor follows Reviewer 2, as always." };
+    else if (count.revise >= count.comment) d = { label: "Major revision", note: "The concerns are mostly about identification. Please address every comment; Reviewer 2 will check." };
+    else d = { label: "Minor revision", note: "Reviewer 2 is almost satisfied, which has never happened before." };
+    d.count = count;
+    d.n = n;
+    return d;
+  }
+
+  function renderReport() {
+    var s = state.session;
+    var d = decide(s.log);
+    $("report-ms").textContent = s.ms;
+    $("report-round").textContent = String(s.round);
+    $("report-title-input").value = s.title || "";
+    $("report-presenter").value = s.presenter || "";
+    $("report-counts").textContent = d.n
+      ? d.n + " comment" + (d.n > 1 ? "s" : "") + ": " + d.count.comment + " comment, " + d.count.revise + " revise, " + d.count.reject + " reject."
+      : "No comments yet in this round. Play some pads first.";
+    $("report-decision").textContent = d.label;
+    $("report-decision").dataset.decision = d.label.toLowerCase().replace(/\s+/g, "-");
+    $("report-note").textContent = d.note;
+    var list = $("report-list");
+    list.replaceChildren();
+    s.log.forEach(function (e) {
+      var li = document.createElement("li");
+      li.className = "sev-" + e.severity;
+      li.textContent = e.text;
+      list.appendChild(li);
+    });
+    $("report-pdf").disabled = !d.n;
+  }
+
+  function wireReport() {
+    var dlg = $("report-dialog");
+    $("report-pdf").textContent = PDF_LABEL;
+    $("report-open").addEventListener("click", function () { renderReport(); dlg.showModal(); });
+    $("report-title-input").addEventListener("input", function (e) { state.session.title = e.target.value.slice(0, 200); save(); });
+    $("report-presenter").addEventListener("input", function (e) { state.session.presenter = e.target.value.slice(0, 120); save(); });
+    $("report-next").addEventListener("click", function () {
+      if (state.session.log.length && !window.confirm("Start round " + (state.session.round + 1) + "? The comments of this round are cleared (download the report first if you want it).")) return;
+      state.session.round += 1;
+      state.session.log = [];
+      save(); renderMasthead(); renderReport();
+      toast("Round " + state.session.round + " of " + state.session.ms + ".");
+    });
+    $("report-new").addEventListener("click", function () {
+      if (state.session.log.length && !window.confirm("Start a new manuscript? The comments of this one are cleared.")) return;
+      state.session = newSession();
+      save(); renderMasthead(); renderReport();
+      toast("New manuscript " + state.session.ms + ".");
+    });
+    $("report-pdf").addEventListener("click", function () {
+      var btn = $("report-pdf");
+      btn.disabled = true;
+      btn.textContent = "Preparing…";
+      buildReportPdf().then(function (blob) {
+        var name = state.session.ms + "-round-" + state.session.round + ".pdf";
+        if (desktopSave) {
+          return blob.arrayBuffer().then(function (buf) { return window.deskReject.savePdf(name, new Uint8Array(buf)); })
+            .then(function (res) { if (res && res.ok) toast("Report saved: " + res.name); });
+        }
+        var a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = name;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(function () { URL.revokeObjectURL(a.href); }, 4000);
+        toast("Report downloaded: " + name);
+      }).catch(function (err) {
+        toast("The PDF could not be created" + (err && err.message ? ": " + err.message : "."));
+      }).then(function () {
+        btn.disabled = !state.session.log.length;
+        btn.textContent = PDF_LABEL;
+      });
+    });
+  }
+
+  // jsPDF and the Computer Modern fonts are loaded only when a report is made.
+  var pdfLibPromise = null;
+  function loadPdfLib() {
+    if (pdfLibPromise) return pdfLibPromise;
+    var script = new Promise(function (resolve, reject) {
+      if (window.jspdf) { resolve(); return; }
+      var sc = document.createElement("script");
+      sc.src = "assets/vendor/jspdf.umd.min.js";
+      sc.onload = function () { resolve(); };
+      sc.onerror = function () { reject(new Error("could not load the PDF library")); };
+      document.head.appendChild(sc);
+    });
+    var files = ["cmu-serif-500-roman", "cmu-serif-500-italic", "cmu-serif-700-roman", "cmu-sans-serif-700-roman", "cmu-typewriter-text-500-roman"];
+    var fonts = Promise.all(files.map(function (f) {
+      return fetch("assets/fonts/pdf/" + f + ".ttf").then(function (r) {
+        if (!r.ok) throw new Error("font " + f);
+        return r.arrayBuffer();
+      }).then(function (buf) {
+        var bytes = new Uint8Array(buf), bin = "";
+        for (var i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+        return [f, btoa(bin)];
+      });
+    }));
+    pdfLibPromise = Promise.all([script, fonts]).then(function (r) { return r[1]; });
+    pdfLibPromise.catch(function () { pdfLibPromise = null; });
+    return pdfLibPromise;
+  }
+
+  function buildReportPdf() {
+    return loadPdfLib().then(function (fonts) {
+      var doc = new window.jspdf.jsPDF({ unit: "mm", format: "a4" });
+      var reg = { "cmu-serif-500-roman": ["CMUSerif", "normal"], "cmu-serif-500-italic": ["CMUSerif", "italic"],
+                  "cmu-serif-700-roman": ["CMUSerif", "bold"], "cmu-sans-serif-700-roman": ["CMUSans", "bold"],
+                  "cmu-typewriter-text-500-roman": ["CMUType", "normal"] };
+      fonts.forEach(function (f) { doc.addFileToVFS(f[0] + ".ttf", f[1]); doc.addFont(f[0] + ".ttf", reg[f[0]][0], reg[f[0]][1]); });
+
+      var s = state.session, d = decide(s.log);
+      var W = 210, H = 297, M = 25, X = M, R = W - M, y = M;
+      var INK = [35, 37, 42], SOFT = [94, 99, 107], RED = [179, 18, 46], BLUE = [29, 79, 160], GREY = [107, 112, 120];
+      var SEVCOL = { comment: GREY, revise: BLUE, reject: RED };
+      function font(name, style, size, color) { doc.setFont(name, style); doc.setFontSize(size); doc.setTextColor.apply(doc, color || INK); }
+      function para(text, size, style, color, gap) {
+        font("CMUSerif", style || "normal", size || 11.5, color);
+        var lines = doc.splitTextToSize(text, R - X);
+        lines.forEach(function (l) { if (y > H - M - 10) { doc.addPage(); y = M; } doc.text(l, X, y); y += (size || 11.5) * 0.48; });
+        y += gap === undefined ? 3 : gap;
+      }
+
+      // masthead
+      font("CMUSans", "bold", 9, SOFT);
+      doc.setCharSpace(0.8);
+      doc.text("THE DESK REJECT REVIEW", X, y);
+      doc.setCharSpace(0);
+      font("CMUSerif", "italic", 9.5, SOFT);
+      doc.text(new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }), R, y, { align: "right" });
+      y += 3;
+      doc.setDrawColor.apply(doc, [211, 214, 219]);
+      doc.setLineWidth(0.3);
+      doc.line(X, y, R, y);
+      y += 12;
+
+      font("CMUSerif", "bold", 19);
+      doc.text("Decision letter", X, y);
+      y += 9;
+
+      // manuscript data
+      var meta = [["Manuscript", s.ms], ["Round", String(s.round)]];
+      if (s.title) meta.push(["Title", s.title]);
+      if (s.presenter) meta.push(["Presented by", s.presenter]);
+      meta.forEach(function (m) {
+        font("CMUSerif", "italic", 10.5, SOFT);
+        doc.text(m[0], X, y);
+        font("CMUSerif", "normal", 10.5);
+        var lines = doc.splitTextToSize(m[1], R - X - 30);
+        doc.text(lines, X + 30, y);
+        y += 5 * lines.length;
+      });
+      y += 6;
+
+      para("Dear Author(s),", 11.5, "normal", INK, 2);
+      para("Thank you for presenting your work. Reviewer 2 has now read the manuscript (or at least the abstract) and raised "
+        + d.n + " comment" + (d.n > 1 ? "s" : "") + " during the seminar. They are reproduced below in the order in which they were made.", 11.5, "normal", INK, 6);
+
+      // the comments
+      s.log.forEach(function (e, i) {
+        font("CMUSerif", "normal", 11.5);
+        var lines = doc.splitTextToSize(e.text, R - X - 32);
+        var need = lines.length * 5.6 + 1.5;
+        if (y + need > H - M - 10) { doc.addPage(); y = M; }
+        font("CMUType", "normal", 10, SOFT);
+        doc.text((i + 1) + ".", X + 7, y, { align: "right" });
+        font("CMUSerif", "normal", 11.5);
+        doc.text(lines, X + 10, y);
+        font("CMUSans", "bold", 7.5, SEVCOL[e.severity] || GREY);
+        doc.setCharSpace(0.4);
+        doc.text(SEV_LABEL[e.severity].toUpperCase(), R, y, { align: "right" });
+        doc.setCharSpace(0);
+        y += need + 2.2;
+      });
+
+      // decision and stamp
+      if (y > H - M - 75) { doc.addPage(); y = M; }
+      y += 6;
+      font("CMUSerif", "italic", 11.5, SOFT);
+      doc.text("Decision", X, y);
+      y += 8;
+      font("CMUSerif", "bold", 18, d.label === "Accept" || d.label === "Minor revision" ? INK : RED);
+      doc.text(d.label, X, y);
+      y += 7;
+      para(d.note, 11.5, "normal", INK, 8);
+      if (y > H - M - 52) { doc.addPage(); y = M; }
+      var ySign = y;
+      para("Yours sincerely,", 11.5, "normal", INK, 1);
+      para("Reviewer 2", 11.5, "italic", INK, 1);
+      para("on behalf of the Editor", 10.5, "normal", SOFT, 0);
+      drawStamp(doc, R - 24, ySign + 16, 21, RED); // beside the signature, below the text
+
+      // footer on every page
+      var pages = doc.getNumberOfPages();
+      for (var p = 1; p <= pages; p++) {
+        doc.setPage(p);
+        font("CMUSerif", "italic", 8.5, SOFT);
+        doc.text("Generated by Desk Reject · " + SITE_URL.replace(/^https?:\/\//, "").replace(/\/$/, ""), X, H - 12);
+        if (pages > 1) doc.text(p + " / " + pages, R, H - 12, { align: "right" });
+      }
+      doc.setProperties({ title: "Decision letter " + s.ms + ", round " + s.round, creator: "Desk Reject" });
+      return doc.output("blob");
+    });
+  }
+
+  // The rubber stamp of the app, drawn with lines and letters (rotated -9°).
+  function drawStamp(doc, cx, cy, r, color) {
+    var rot = -9 * Math.PI / 180;
+    doc.setDrawColor.apply(doc, color);
+    doc.setTextColor.apply(doc, color);
+    doc.setLineWidth(1.2);
+    doc.circle(cx, cy, r, "S");
+    doc.setLineWidth(0.5);
+    doc.circle(cx, cy, r * 0.62, "S");
+    doc.setFont("CMUSans", "bold");
+    function arc(text, radius, centerDeg, top) {
+      doc.setFontSize(r * 0.62);
+      doc.setCharSpace(0);
+      var widths = text.split("").map(function (ch) { return doc.getTextWidth(ch) + 0.55; });
+      var total = widths.reduce(function (a, b) { return a + b; }, 0);
+      var span = total / radius; // radians
+      var a = (centerDeg * Math.PI / 180) + rot + (top ? -span / 2 : span / 2);
+      text.split("").forEach(function (ch, i) {
+        var mid = a + (top ? 1 : -1) * (widths[i] / 2) / radius;
+        var x = cx + radius * Math.cos(mid), yy = cy + radius * Math.sin(mid);
+        // jsPDF angles are counter-clockwise, in degrees, with y pointing down
+        var deg = top ? -(mid * 180 / Math.PI + 90) : -(mid * 180 / Math.PI - 90);
+        var w = doc.getTextWidth(ch);
+        var ox = (w / 2) * Math.cos(-deg * Math.PI / 180), oy = (w / 2) * Math.sin(-deg * Math.PI / 180);
+        doc.text(ch, x - ox, yy - oy, { angle: deg, baseline: "middle" });
+        a += (top ? 1 : -1) * widths[i] / radius;
+      });
+    }
+    arc("REVIEWER", r * 0.81, -90, true);
+    arc("DECIDES FOR YOU", r * 0.81, 90, false);
+    doc.setFontSize(r * 2.0);
+    var w2 = doc.getTextWidth("2");
+    var deg2 = -rot * 180 / Math.PI;
+    doc.text("2", cx - (w2 / 2) * Math.cos(rot), cy - (w2 / 2) * Math.sin(rot), { angle: deg2, baseline: "middle" });
+  }
+
+  // ------------------------------------------------------------ share link
+  // A board travels in the address itself (#board=…): texts, types and banks,
+  // compressed. Recordings are too large for a link and stay with the file export.
+
+  var SEV_CODE = ["comment", "revise", "reject"];
+
+  function b64url(bytes) {
+    var bin = "";
+    for (var i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+    return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  }
+  function unb64url(s) {
+    var bin = atob(s.replace(/-/g, "+").replace(/_/g, "/"));
+    var out = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+  }
+  function pipe(bytes, stream) {
+    return new Response(new Blob([bytes]).stream().pipeThrough(stream)).arrayBuffer().then(function (b) { return new Uint8Array(b); });
+  }
+
+  function encodeBoard() {
+    var index = {};
+    state.comments.forEach(function (c, i) { index[c.id] = i; });
+    var payload = {
+      f: "dr", v: 1, n: state.name, l: state.lang,
+      c: state.comments.map(function (c) { return [c.text, SEV_CODE.indexOf(c.severity), c.random ? 1 : 0]; }),
+      b: {}, bn: state.bankNames || {}
+    };
+    BANKS.forEach(function (n) {
+      if (bankUsed(n)) payload.b[n] = state.banks[n].map(function (id) { return id ? index[id] : -1; });
+    });
+    var json = new TextEncoder().encode(JSON.stringify(payload));
+    if (typeof CompressionStream === "function") {
+      return pipe(json, new CompressionStream("deflate-raw")).then(function (z) { return "z." + b64url(z); });
+    }
+    return Promise.resolve("j." + b64url(json));
+  }
+
+  function decodeBoard(code) {
+    var kind = code.slice(0, 2), data = unb64url(code.slice(2));
+    var p = kind === "z." ? pipe(data, new DecompressionStream("deflate-raw")) : Promise.resolve(data);
+    return p.then(function (bytes) {
+      var o = JSON.parse(new TextDecoder().decode(bytes));
+      if (!o || o.f !== "dr" || !Array.isArray(o.c)) throw new Error("not a board");
+      var comments = o.c.map(function (c) { return { id: uid(), text: String(c[0] || ""), severity: SEV_CODE[c[1]] || "comment", random: c[2] !== 0 }; });
+      var banks = {};
+      BANKS.forEach(function (n) {
+        banks[n] = (Array.isArray(o.b && o.b[n]) ? o.b[n] : []).slice(0, PADS).map(function (i) { return comments[i] ? comments[i].id : null; });
+      });
+      return sanitizeBoard({ name: o.n, lang: o.l, comments: comments, banks: banks, bankNames: o.bn, settings: state.settings });
+    });
+  }
+
+  function shareBase() {
+    var webLocal = /^https?:$/.test(location.protocol) && !/^(localhost|127\.|\[::1\])/.test(location.hostname);
+    return webLocal ? location.origin + location.pathname : SITE_URL;
+  }
+
+  function loadSharedBoard(b) {
+    var n = b.comments.length;
+    if (!window.confirm("Load the shared board “" + b.name + "” with " + n + " comments? It replaces your current board. Recordings are not part of shared boards.")) return false;
+    b.session = state.session;
+    state = b;
+    commit();
+    toast("Loaded “" + b.name + "”.");
+    return true;
+  }
+
+  function checkSharedLink() {
+    var m = /[#&]board=([A-Za-z0-9._-]+)/.exec(location.hash || "");
+    if (!m) return;
+    var clear = function () { try { history.replaceState(null, "", location.pathname + location.search); } catch (e) { /* ignore */ } };
+    decodeBoard(m[1]).then(function (b) { loadSharedBoard(b); clear(); })
+      .catch(function () { clear(); toast("This link does not contain a valid Desk Reject board."); });
+  }
+
+  function wireShare() {
+    var dlg = $("share-dialog");
+    $("share-btn").addEventListener("click", function () {
+      $("share-link").value = "Preparing…";
+      $("share-qr").replaceChildren();
+      $("share-import-text").value = "";
+      dlg.showModal();
+      encodeBoard().then(function (code) {
+        var url = shareBase() + "#board=" + code;
+        $("share-link").value = url;
+        var box = $("share-qr");
+        if (window.qrcode && url.length <= 2300) {
+          var qr = window.qrcode(0, "L");
+          qr.addData(url, "Byte");
+          qr.make();
+          box.innerHTML = qr.createSvgTag({ cellSize: 3, margin: 4, scalable: true });
+          $("share-qr-note").textContent = "Scan it with a phone camera to open the board there.";
+        } else {
+          $("share-qr-note").textContent = "This board is too large for a QR code: send the link instead.";
+        }
+      }).catch(function () { $("share-link").value = "The link could not be created in this browser."; });
+    });
+    $("share-copy").addEventListener("click", function () {
+      var url = $("share-link").value;
+      var done = function () { toast("Link copied."); };
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(url).then(done, function () { $("share-link").select(); document.execCommand("copy"); done(); });
+      else { $("share-link").select(); document.execCommand("copy"); done(); }
+    });
+    $("share-import").addEventListener("click", function () {
+      var m = /[#&]board=([A-Za-z0-9._-]+)/.exec($("share-import-text").value.trim());
+      if (!m) { toast("Paste a link that contains #board=…"); return; }
+      decodeBoard(m[1]).then(function (b) { if (loadSharedBoard(b)) dlg.close(); })
+        .catch(function () { toast("This link does not contain a valid Desk Reject board."); });
     });
   }
 
@@ -1089,6 +1523,22 @@
 
   // ------------------------------------------------------------ keyboard
 
+  // The same actions for the keyboard and for the desktop app's global shortcuts.
+  function runAction(a) {
+    if (a.type === "stop") { stopAll(); return true; }
+    if (a.type === "random") { playRandom(); return true; }
+    if (a.type === "bank") {
+      var i = BANKS.indexOf(bank()) + a.step;
+      if (i >= 0 && i < BANKS.length) { selectBank(BANKS[i]); return true; }
+      return false;
+    }
+    if (a.type === "pad") {
+      var c = padsOf(bank())[a.index];
+      if (c) { play(c, padButton(c.id)); return true; }
+    }
+    return false;
+  }
+
   function wireKeys() {
     document.addEventListener("keydown", function (e) {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
@@ -1097,26 +1547,37 @@
       if (e.key === "Escape") { stopAll(); return; }
       if (e.key === " " && !/^(BUTTON|A)$/.test(tag)) { e.preventDefault(); playRandom(); return; }
       if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
-        var i = BANKS.indexOf(bank()) + (e.key === "ArrowRight" ? 1 : -1);
-        if (i >= 0 && i < BANKS.length) { e.preventDefault(); selectBank(BANKS[i]); }
+        if (runAction({ type: "bank", step: e.key === "ArrowRight" ? 1 : -1 })) e.preventDefault();
         return;
       }
       var idx = PAD_CODES.indexOf(e.code);
-      if (idx >= 0) {
-        var c = padsOf(bank())[idx];
-        if (c) {
-          e.preventDefault();
-          play(c, padButton(c.id));
-        }
-      }
+      if (idx >= 0 && runAction({ type: "pad", index: idx })) e.preventDefault();
     });
+    // Desktop app: shortcuts that work while another app (Keynote, PowerPoint…) is in front.
+    var bridge = window.deskReject;
+    if (bridge && bridge.onShortcut) {
+      bridge.onShortcut(function (a) { runAction(a); });
+      applyGlobalKeys();
+    }
+  }
+
+  function applyGlobalKeys() {
+    var bridge = window.deskReject;
+    if (!bridge || !bridge.setGlobalShortcuts) return;
+    bridge.setGlobalShortcuts(!!state.settings.globalKeys).then(function (res) {
+      var note = $("global-keys-note");
+      if (!note) return;
+      if (!state.settings.globalKeys) { note.textContent = ""; return; }
+      note.textContent = res && res.failed && res.failed.length
+        ? "Some combinations are taken by another app and do not work: " + res.failed.join(", ") + "."
+        : "Active: they work even while another app is in front.";
+    }).catch(function () {});
   }
 
   // ----------------------------------------------------------------- boot
 
   function boot() {
-    var n = String(Math.floor(Math.random() * 9000) + 1000);
-    $("ms-number").textContent = "Manuscript DR-" + new Date().getFullYear() + "-" + n;
+    renderMasthead();
 
     // On GitHub Pages (user.github.io/repo) point "Source code" at the repo;
     // elsewhere drop the link rather than show a dead one.
@@ -1146,6 +1607,8 @@
     wireEditor();
     wirePicker();
     wireSettings();
+    wireReport();
+    wireShare();
     wireKeys();
 
     if (synth) {
@@ -1157,6 +1620,8 @@
     recKeys().then(function (keys) { (keys || []).forEach(function (k) { recIds.add(k); }); render(); })
       .catch(function () { render(); });
     render();
+    checkSharedLink();
+    window.addEventListener("hashchange", checkSharedLink);
 
     if ("serviceWorker" in navigator && /^https?:$/.test(location.protocol)) {
       navigator.serviceWorker.register("sw.js").catch(function () {});

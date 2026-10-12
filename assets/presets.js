@@ -2,7 +2,7 @@
  * Built-in boards. Each comment has:
  *   text      what gets spoken (and shown)
  *   severity  "comment" | "revise" | "reject"  (ink colour on the board)
- *   board     true = a pad on the board (the first 16 get keyboard keys);
+ *   board     true = a pad: the first 16 fill bank A, the next 16 bank B;
  *             false = in the reserve, only drawn by the Reviewer 2 stamp
  *
  * To add a board, append an object with a unique id. Keep phrases short:
@@ -12,6 +12,8 @@ window.DESK_REJECT_PRESETS = [
   {
     id: "reviewer2-en",
     name: "Reviewer 2",
+    // Pads fill bank A first, then B (16 each), in the order below.
+    bankNames: { A: "Reviewer 2", B: "Unleashed" },
     lang: "en",
     comments: [
       { text: "Why should I care?", severity: "comment", board: true },
@@ -31,6 +33,25 @@ window.DESK_REJECT_PRESETS = [
       { text: "Better suited for a field journal.", severity: "reject", board: true },
       { text: "Desk reject!", severity: "reject", board: true },
 
+      // bank B, "Unleashed"
+      { text: "This paper answers a question nobody asked.", severity: "reject", board: true },
+      { text: "The contribution is, at best, marginal.", severity: "reject", board: true },
+      { text: "Your standard errors are a work of fiction.", severity: "revise", board: true },
+      { text: "This is p-hacking with extra steps.", severity: "reject", board: true },
+      { text: "Even the placebo test is significant.", severity: "revise", board: true },
+      { text: "I am not convinced, and I will not be convinced.", severity: "reject", board: true },
+      { text: "The figures are beautiful. The paper is not.", severity: "comment", board: true },
+      { text: "Please drop the paper and keep the appendix.", severity: "comment", board: true },
+      { text: "A fishing expedition with fixed effects.", severity: "revise", board: true },
+      { text: "The abstract overpromises. The paper underdelivers.", severity: "comment", board: true },
+      { text: "Interesting data. Pity about the question.", severity: "comment", board: true },
+      { text: "Why is this a paper and not a footnote?", severity: "reject", board: true },
+      { text: "With this sample, you can prove anything.", severity: "revise", board: true },
+      { text: "The theory section is purely decorative.", severity: "revise", board: true },
+      { text: "Have you considered a different field?", severity: "reject", board: true },
+      { text: "Reject. Do not resubmit.", severity: "reject", board: true },
+
+      // reserve: no pad, drawn only by the stamp
       { text: "Interesting paper. However.", severity: "comment", board: false },
       { text: "I am not sure what we learn from this.", severity: "comment", board: false },
       { text: "This is well known.", severity: "comment", board: false },
@@ -52,7 +73,13 @@ window.DESK_REJECT_PRESETS = [
       { text: "Have you considered general equilibrium effects?", severity: "revise", board: false },
       { text: "The authors should write a different paper.", severity: "reject", board: false },
       { text: "Reject and resubmit.", severity: "reject", board: false },
-      { text: "Reject. I have no further comments.", severity: "reject", board: false }
+      { text: "Reject. I have no further comments.", severity: "reject", board: false },
+      { text: "Your instrument is neither relevant nor excludable.", severity: "revise", board: false },
+      { text: "This was settled in 1974.", severity: "comment", board: false },
+      { text: "The literature review stops in 2009.", severity: "comment", board: false },
+      { text: "No amount of robustness checks will save this.", severity: "reject", board: false },
+      { text: "I reviewed this for another journal. My opinion has not changed.", severity: "reject", board: false },
+      { text: "This belongs in a policy brief, not a journal.", severity: "reject", board: false }
     ]
   }
 ];

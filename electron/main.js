@@ -7,14 +7,18 @@
  *   - asks macOS for microphone access when Record is pressed
  *   - swaps the Dock / window icon when the system switches light <-> dark
  *     (on macOS 26+ the packaged app leaves this to the system, see afterPack.js)
- *   - checks GitHub Releases once at startup and offers newer versions
+ *   - checks GitHub Releases once at startup and offers newer versions; on a
+ *     Mac it installs them itself (mac-updater.js), elsewhere it opens the installer
+ *   - optional global shortcuts, so pads play while another app is in front
+ *   - saves the referee report PDF through the system's Save dialog
  */
 "use strict";
 
-const { app, BrowserWindow, Menu, nativeImage, nativeTheme, net, protocol, session, shell, dialog, ipcMain, systemPreferences } = require("electron");
+const { app, BrowserWindow, Menu, nativeImage, nativeTheme, net, protocol, session, shell, dialog, ipcMain, systemPreferences, globalShortcut } = require("electron");
 const path = require("node:path");
 const fs = require("node:fs");
 const { pathToFileURL } = require("node:url");
+const macUpdater = require("./mac-updater");
 
 const ROOT = path.join(__dirname, "..");
 const ORIGIN = "app://desk-reject";
@@ -128,6 +132,63 @@ function downloadInstaller(asset, version) {
   win.webContents.downloadURL(asset.browser_download_url);
 }
 
+// ---- macOS: install the update in place (see mac-updater.js)
+
+const updatesDir = () => path.join(app.getPath("userData"), "updates");
+const macArch = () => (process.arch === "arm64" || app.runningUnderARM64Translation ? "arm64" : "x64");
+let pendingMacInstaller = null; // set when the user picks "Later": runs as the app quits
+
+function canSelfInstall() {
+  if (process.platform !== "darwin" || !app.isPackaged) return false; // never touch the Electron used by npm start
+  return !macUpdater.selfInstallBlocker(macUpdater.currentBundlePath(process.execPath));
+}
+
+async function installMacUpdate(rel, repo, version) {
+  const yml = (rel.assets || []).find((a) => a.name === "latest-mac.yml");
+  try {
+    if (!yml) throw new Error("the release has no latest-mac.yml");
+    const res = await net.fetch(yml.browser_download_url);
+    if (!res.ok) throw new Error("latest-mac.yml: HTTP " + res.status);
+    const info = macUpdater.parseLatestYml(await res.text());
+    info.version = info.version || version;
+    const launch = await macUpdater.prepareUpdate({
+      fetchImpl: (u) => net.fetch(u),
+      repo,
+      info,
+      arch: macArch(),
+      execPath: process.execPath,
+      workRoot: updatesDir(),
+      onProgress: (p) => { if (win) win.setProgressBar(p.total ? p.transferred / p.total : 2); }
+    });
+    if (win) win.setProgressBar(-1);
+    const { response } = await dialog.showMessageBox(win, {
+      type: "info",
+      buttons: ["Restart Now", "Later"],
+      defaultId: 0,
+      cancelId: 1,
+      message: "Desk Reject " + info.version + " is ready",
+      detail: "Restart now to finish, or keep working: the update is installed when you quit."
+    });
+    if (response === 0) { launch({ relaunch: true }); app.quit(); }
+    else pendingMacInstaller = launch;
+  } catch (err) {
+    if (win) win.setProgressBar(-1);
+    // Could not update in place: fall back to downloading the dmg.
+    const asset = pickAsset(rel.assets || []);
+    await dialog.showMessageBox(win, {
+      type: "warning",
+      message: "The update could not be installed automatically",
+      detail: String(err.message || err) + (asset ? "\n\nThe installer will be downloaded instead." : "")
+    });
+    if (asset) downloadInstaller(asset, version);
+    else shell.openExternal(rel.html_url || "https://github.com/" + repo + "/releases/latest");
+  }
+}
+
+app.on("before-quit", () => {
+  if (pendingMacInstaller) { const run = pendingMacInstaller; pendingMacInstaller = null; run({ relaunch: false }); }
+});
+
 const prefsFile = () => path.join(app.getPath("userData"), "update-prefs.json");
 function readPrefs() { try { return JSON.parse(fs.readFileSync(prefsFile(), "utf8")); } catch (e) { return {}; } }
 function writePrefs(p) { try { fs.writeFileSync(prefsFile(), JSON.stringify(p)); } catch (e) { /* ignore */ } }
@@ -152,23 +213,74 @@ async function checkForUpdates(manual) {
       return;
     }
     if (!manual && prefs.skip === latest) return;
+    const selfInstall = canSelfInstall();
     const { response } = await dialog.showMessageBox(win, {
       type: "info",
-      buttons: ["Download", "Later", "Skip This Version"],
+      buttons: [selfInstall ? "Install Update" : "Download", "Later", "Skip This Version"],
       defaultId: 0,
       cancelId: 1,
       message: "Desk Reject " + latest + " is available",
-      detail: "You have version " + current + ". The installer is downloaded to your Downloads folder and opened for you."
+      detail: "You have version " + current + ". " + (selfInstall
+        ? "The update is downloaded and checked, then Desk Reject restarts with the new version."
+        : "The installer is downloaded to your Downloads folder and opened for you.")
     });
     if (response === 0) {
-      const asset = pickAsset(rel.assets || []);
-      if (asset) downloadInstaller(asset, latest);
-      else shell.openExternal(rel.html_url || "https://github.com/" + repo + "/releases/latest"); // nothing for this system yet
+      if (selfInstall) installMacUpdate(rel, repo, latest);
+      else {
+        const asset = pickAsset(rel.assets || []);
+        if (asset) downloadInstaller(asset, latest);
+        else shell.openExternal(rel.html_url || "https://github.com/" + repo + "/releases/latest"); // nothing for this system yet
+      }
     }
     if (response === 2) writePrefs(Object.assign(prefs, { skip: latest }));
   } catch (e) {
     if (manual) dialog.showMessageBox(win, { type: "warning", message: "Could not check for updates", detail: String(e.message || e) });
   }
+}
+
+// ------------------------------------------------------- global shortcuts
+
+// Control+Option (Ctrl+Alt elsewhere) plus the pad's key: the same grid as the
+// in-app keyboard, usable while Keynote or PowerPoint is in front.
+const PAD_KEYS = "1234QWERASDFZXCV".split("");
+function shortcutTable() {
+  const t = PAD_KEYS.map((k, i) => ["Control+Alt+" + k, { type: "pad", index: i }]);
+  t.push(["Control+Alt+Space", { type: "random" }]);
+  t.push(["Control+Alt+Left", { type: "bank", step: -1 }]);
+  t.push(["Control+Alt+Right", { type: "bank", step: 1 }]);
+  t.push(["Control+Alt+Escape", { type: "stop" }]);
+  return t;
+}
+
+function setGlobalShortcuts(enabled) {
+  globalShortcut.unregisterAll();
+  const failed = [];
+  if (enabled) {
+    for (const [acc, action] of shortcutTable()) {
+      const ok = globalShortcut.register(acc, () => { if (win) win.webContents.send("dr:shortcut", action); });
+      if (!ok) failed.push(acc.replace("Control+Alt+", ""));
+    }
+  }
+  return { enabled: !!enabled, failed };
+}
+
+app.on("will-quit", () => globalShortcut.unregisterAll());
+
+// ------------------------------------------------------------ PDF report
+
+// The page builds the PDF (the same file the web app downloads); here it is
+// written where the user chooses, starting from the Documents folder.
+async function saveReportPdf(name, bytes) {
+  if (!win || !bytes) return { ok: false };
+  const safe = String(name).replace(/[\\/:*?"<>|]+/g, "-") || "report.pdf";
+  const { canceled, filePath } = await dialog.showSaveDialog(win, {
+    title: "Save referee report",
+    defaultPath: path.join(app.getPath("documents"), safe),
+    filters: [{ name: "PDF", extensions: ["pdf"] }]
+  });
+  if (canceled || !filePath) return { ok: false };
+  fs.writeFileSync(filePath, Buffer.from(bytes));
+  return { ok: true, name: path.basename(filePath) };
 }
 
 // ------------------------------------------------------------------- menu
@@ -209,7 +321,8 @@ function createWindow() {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
       sandbox: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      backgroundThrottling: false // global shortcuts must play at once while the window is behind
     }
   });
   win.once("ready-to-show", () => win.show());
@@ -259,6 +372,10 @@ app.whenReady().then(() => {
     const repo = repoSlug();
     e.returnValue = { version: app.getVersion(), platform: process.platform, repoURL: repo ? "https://github.com/" + repo : null };
   });
+
+  ipcMain.handle("dr:global-shortcuts", (_e, enabled) => setGlobalShortcuts(!!enabled));
+  ipcMain.handle("dr:save-pdf", (_e, name, bytes) => saveReportPdf(name, bytes));
+  if (process.platform === "darwin" && app.isPackaged) macUpdater.cleanup({ execPath: process.execPath, workRoot: updatesDir() });
 
   nativeTheme.on("updated", applyTheme);
   buildMenu();

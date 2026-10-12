@@ -895,3 +895,88 @@ html.desktop-darwin .sheet { padding-top: 10px; }
   cursor: pointer;
 }
 .close-x:hover { background: var(--tint); color: var(--ink); }
+
+/* ---------- buttons, not links ----------
+   Every secondary command is a small button; .ink-btn stays the primary one. */
+
+.text-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  background: var(--tint);
+  color: var(--ink);
+  text-decoration: none;
+  font-size: 15px;
+  line-height: 1.4;
+  cursor: pointer;
+  transition: border-color .12s, background-color .12s;
+}
+.text-btn:hover { text-decoration: none; border-color: var(--blue); }
+.text-btn:active { transform: translateY(1px); }
+.text-btn[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); font-weight: 400; }
+.text-btn.danger { color: var(--red); }
+.text-btn.danger:hover { border-color: var(--red); }
+.text-btn:disabled, .ink-btn:disabled { opacity: .45; cursor: default; transform: none; }
+.ink-btn { border-radius: 6px; }
+.masthead-actions { gap: 8px; }
+.masthead .text-btn { font-size: 14px; padding: 3px 11px; }
+.comment-tools .text-btn { font-size: 13px; padding: 2px 9px; }
+.voice-help { font-size: 14px; }
+
+/* the icon tools floating on a pad stay plain glyphs */
+.pads .comment-tools .text-btn {
+  border: 0;
+  background: none;
+  padding: 0 4px;
+  color: #c9d6f5;
+  font-size: inherit;
+}
+.pads .comment-tools .text-btn:hover { color: #fff; }
+
+/* ---------- referee report dialog ---------- */
+
+.report-panel { width: min(620px, calc(100vw - 24px)); }
+.report-panel .panel-body { position: relative; }
+.report-panel input[type="text"] { width: 100%; }
+.report-meta { margin: 0 0 6px; color: var(--ink-soft); font-style: italic; }
+.report-meta b { font-style: normal; color: var(--ink); }
+.report-list {
+  margin: 0;
+  padding: 6px 0 6px 2.2em;
+  max-height: min(30vh, 220px);
+  overflow: auto;
+  border-top: 1px solid var(--rule);
+  border-bottom: 1px solid var(--rule);
+  font-size: 15px;
+}
+.report-list:empty { display: none; }
+.report-list li { padding: 2px 0 2px 8px; border-left: 3px solid var(--sev); margin: 3px 0; }
+.report-decision-row { display: flex; align-items: baseline; gap: 12px; margin-top: 8px; }
+.report-decision {
+  font-family: var(--stamp-face);
+  font-weight: 700;
+  font-size: 20px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--red);
+  border: 2.5px solid currentColor;
+  border-radius: 4px;
+  padding: 2px 10px;
+  transform: rotate(-4deg);
+}
+.report-decision[data-decision="accept"], .report-decision[data-decision="minor-revision"] { color: var(--blue); }
+
+/* ---------- share dialog ---------- */
+
+.share-row { display: flex; gap: 8px; }
+.share-row input { flex: 1; min-width: 0; font-family: var(--tt); font-size: 13px; }
+.share-qr { align-self: center; width: min(240px, 70vw); background: #fff; border-radius: 6px; line-height: 0; }
+.share-qr:empty { display: none; }
+.share-qr svg { width: 100%; height: auto; display: block; }
+
+/* [hidden] must win over the display rules of panels and fieldsets */
+[hidden] { display: none !important; }
+.chassis-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }

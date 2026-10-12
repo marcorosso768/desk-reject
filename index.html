@@ -20,6 +20,7 @@
     <header class="masthead">
       <p class="ms-line"><span id="ms-number">Manuscript DR-2026-0000</span>, round <span id="ms-round">1</span></p>
       <div class="masthead-actions">
+        <button type="button" class="text-btn" id="report-open">Report</button>
         <button type="button" class="text-btn" id="edit-toggle" aria-pressed="false">Edit pads</button>
         <button type="button" class="text-btn" id="settings-open">Settings</button>
       </div>
@@ -130,6 +131,13 @@
         </button>
       </fieldset>
 
+      <fieldset id="global-keys-box" hidden>
+        <legend>Shortcuts in other apps</legend>
+        <label class="check"><input type="checkbox" id="global-keys"> Play pads while another app is in front, for example during a presentation</label>
+        <p class="note">Hold <kbd id="global-keys-combo">Control + Option</kbd> and press a pad's key (1–4, Q–R, A–F, Z–V), <kbd>Space</kbd> for Reviewer 2, <kbd>←</kbd> <kbd>→</kbd> to switch bank or <kbd>Esc</kbd> to stop.</p>
+        <p class="note" id="global-keys-note"></p>
+      </fieldset>
+
       <fieldset>
         <legend>Reviewer 2 draws from</legend>
         <label class="check"><input type="radio" name="random-from" value="all"> Every comment, including the reserve</label>
@@ -138,10 +146,11 @@
 
       <fieldset>
         <legend>Your board</legend>
-        <p class="note">Export saves comments and recordings to a file you can send to colleagues. Import replaces the current board.</p>
+        <p class="note">Export saves comments and recordings to a file you can send to colleagues; a share link carries the comments and banks, without recordings. Import replaces the current board.</p>
         <div class="button-row">
           <button type="button" class="ink-btn" id="export-btn">Export board</button>
           <button type="button" class="ink-btn" id="import-btn">Import board</button>
+          <button type="button" class="ink-btn" id="share-btn">Share link</button>
           <input type="file" id="import-file" accept="application/json,.json" hidden>
         </div>
         <button type="button" class="text-btn danger" id="reset-btn">Reset to the Reviewer 2 preset</button>
@@ -197,6 +206,54 @@
     </form>
   </dialog>
 
+  <dialog class="panel report-panel" id="report-dialog" aria-labelledby="report-heading">
+    <form method="dialog" class="panel-body">
+      <button value="close" class="close-x" aria-label="Close">
+        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      </button>
+      <h2 id="report-heading">Referee report</h2>
+      <p class="report-meta">Manuscript <b id="report-ms">DR-0000</b>, round <b id="report-round">1</b></p>
+      <label for="report-title-input">Paper title <span class="note">(optional)</span></label>
+      <input type="text" id="report-title-input" maxlength="200" autocomplete="off" placeholder="On the Causal Effect of Seminars on Coffee Consumption">
+      <label for="report-presenter">Presented by <span class="note">(optional)</span></label>
+      <input type="text" id="report-presenter" maxlength="120" autocomplete="off">
+      <p class="note" id="report-counts"></p>
+      <ol class="report-list" id="report-list"></ol>
+      <div class="report-decision-row">
+        <span class="note">Decision</span>
+        <span class="report-decision" id="report-decision">Accept</span>
+      </div>
+      <p class="note" id="report-note"></p>
+      <div class="panel-actions">
+        <button type="button" class="text-btn" id="report-new">New manuscript</button>
+        <button type="button" class="text-btn" id="report-next">Next round</button>
+        <span class="spacer"></span>
+        <button type="button" class="ink-btn" id="report-pdf">Download PDF</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog class="panel help-panel" id="share-dialog" aria-labelledby="share-heading">
+    <form method="dialog" class="panel-body">
+      <button value="close" class="close-x" aria-label="Close">
+        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      </button>
+      <h2 id="share-heading">Share this board</h2>
+      <p>Whoever opens the link gets a copy of your comments, their types and the banks. Recordings are not included: for those, use Export board.</p>
+      <div class="share-row">
+        <input type="text" id="share-link" readonly aria-label="Share link">
+        <button type="button" class="ink-btn" id="share-copy">Copy</button>
+      </div>
+      <div class="share-qr" id="share-qr"></div>
+      <p class="note" id="share-qr-note"></p>
+      <label for="share-import-text">Or open a board someone sent you</label>
+      <div class="share-row">
+        <input type="text" id="share-import-text" placeholder="Paste a Desk Reject link" autocomplete="off">
+        <button type="button" class="text-btn" id="share-import">Load</button>
+      </div>
+    </form>
+  </dialog>
+
   <dialog class="panel" id="pick-dialog">
     <form method="dialog" class="panel-body">
       <h2 id="pick-title">Empty pad</h2>
@@ -217,6 +274,7 @@
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
+  <script src="assets/vendor/qrcode.js"></script>
   <script src="assets/presets.js"></script>
   <script src="assets/app.js"></script>
 </body>
