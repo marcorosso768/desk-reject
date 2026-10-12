@@ -483,7 +483,7 @@
     var marks = [];
     if (recIds.has(c.id)) marks.push(onPad ? "● rec" : "recorded");
     if (!c.random) marks.push("not drawn");
-    if (!onPad) { var where = slotOf(c.id); if (where) marks.push("bank " + where.bank); }
+    if (!onPad) { var where = slotOf(c.id); if (where) marks.push("pad bank " + where.bank); }
     mark.textContent = marks.join(", ");
 
     btn.append(num, txt, mark);
@@ -505,7 +505,7 @@
     } else {
       tools.append(
         tool("Edit", "Edit “" + c.text + "”", function () { openEditor(c.id); }),
-        tool("Add to pad", "Add “" + c.text + "” to the first free pad of bank " + bank(), function () { putOnPad(c.id); })
+        tool("Add to pad", "Add “" + c.text + "” to the first free pad of pad bank " + bank(), function () { putOnPad(c.id); })
       );
     }
 
@@ -530,7 +530,7 @@
     plus.setAttribute("aria-hidden", "true");
     plus.textContent = "+";
     btn.append(num, plus);
-    btn.setAttribute("aria-label", "Add a comment on pad " + PAD_LABELS[slot] + " of bank " + bank());
+    btn.setAttribute("aria-label", "Add a comment on pad " + PAD_LABELS[slot] + " of pad bank " + bank());
     btn.addEventListener("click", function () { openPicker(slot); });
     li.appendChild(btn);
     makeDropTarget(li, function (id) { dropOnSlot(id, slot); });
@@ -598,11 +598,11 @@
     var from = slotOf(id);
     if (from && from.bank === name) return;
     var i = firstFree(name);
-    if (i < 0) { toast("Bank " + name + " is full."); return; }
+    if (i < 0) { toast("Pad bank " + name + " is full."); return; }
     unplace(id);
     state.banks[name][i] = id;
     commit();
-    toast("Moved to pad " + PAD_LABELS[i] + " of bank " + name + ".");
+    toast("Moved to pad " + PAD_LABELS[i] + " of pad bank " + name + ".");
   }
 
   function tool(label, aria, fn, title) {
@@ -626,7 +626,7 @@
       b.className = "bank-btn";
       b.textContent = n;
       b.setAttribute("aria-pressed", String(n === bank()));
-      b.setAttribute("aria-label", "Bank " + n + (bankUsed(n) ? "" : ", empty"));
+      b.setAttribute("aria-label", "Pad bank " + n + (bankUsed(n) ? "" : ", empty"));
       if (bankUsed(n)) b.classList.add("used");
       b.addEventListener("click", function () { selectBank(n); });
       makeDropTarget(b, function (id) { dropOnBank(id, n); });
@@ -663,7 +663,7 @@
       lib.appendChild(li2);
     }
     renderBanks();
-    $("bank-label").textContent = "Bank " + bank();
+    $("bank-label").textContent = "Pad bank " + bank();
     document.body.classList.toggle("editing", editing);
     fitPads(); // after the editing class, which changes the room inside the pads
     $("edit-toggle").setAttribute("aria-pressed", String(editing));
@@ -702,7 +702,7 @@
 
   function whereLabel(id) {
     var w = slotOf(id);
-    return w ? "Bank " + w.bank + " · " + PAD_LABELS[w.slot] : "Reserve";
+    return w ? "Pad bank " + w.bank + " · " + PAD_LABELS[w.slot] : "Reserve";
   }
 
   function renderPickList() {
@@ -730,7 +730,7 @@
         var slot = pickSlot;
         $("pick-dialog").close("picked");
         dropOnSlot(c.id, slot);
-        toast("“" + c.text + "” is now on pad " + PAD_LABELS[slot] + " of bank " + bank() + ".");
+        toast("“" + c.text + "” is now on pad " + PAD_LABELS[slot] + " of pad bank " + bank() + ".");
       });
       li.appendChild(b);
       list.appendChild(li);
@@ -746,7 +746,7 @@
 
   function openPicker(slot) {
     pickSlot = slot;
-    $("pick-title").textContent = "Pad " + PAD_LABELS[slot] + ", bank " + bank();
+    $("pick-title").textContent = "Pad " + PAD_LABELS[slot] + ", pad bank " + bank();
     $("pick-search").value = "";
     showPickList(false);
     $("pick-dialog").showModal();
@@ -782,11 +782,11 @@
 
   function putOnPad(id) {
     var i = firstFree(bank());
-    if (i < 0) { toast("Bank " + bank() + " is full. Take a comment off a pad, or switch bank."); return; }
+    if (i < 0) { toast("Pad bank " + bank() + " is full. Take a comment off a pad, or switch pad bank."); return; }
     unplace(id);
     state.banks[bank()][i] = id;
     commit();
-    toast("Now on pad " + PAD_LABELS[i] + " of bank " + bank() + ".");
+    toast("Now on pad " + PAD_LABELS[i] + " of pad bank " + bank() + ".");
   }
 
   function move(id, delta) {
@@ -829,7 +829,7 @@
       $("edit-text").value = "";
       $("edit-severity").value = "comment";
       $("edit-random").checked = true;
-      $("edit-title").textContent = (recordFirst ? "Record a new comment" : "New comment") + ", pad " + PAD_LABELS[newSlot.slot] + " of bank " + newSlot.bank;
+      $("edit-title").textContent = (recordFirst ? "Record a new comment" : "New comment") + ", pad " + PAD_LABELS[newSlot.slot] + " of pad bank " + newSlot.bank;
       $("edit-delete").hidden = true;
     }
     $("edit-text-label").textContent = recordFirst ? "What it says (shown on the pad)" : "Text";
@@ -920,7 +920,7 @@
           var slots = state.banks[draft.bank];
           var i = slots[draft.slot] === null ? draft.slot : slots.indexOf(null);
           if (i >= 0) slots[i] = draft.id;
-          else toast("That bank filled up, so the comment went to the reserve.");
+          else toast("That pad bank filled up, so the comment went to the reserve.");
         } else {
           var c = byId(editingId);
           if (c) {
@@ -1083,7 +1083,7 @@
       if (f) importBoard(f);
     });
     $("reset-btn").addEventListener("click", function () {
-      if (!window.confirm("Replace your board with the Reviewer 2 preset? Your comments, banks and recordings will be deleted.")) return;
+      if (!window.confirm("Replace your board with the Reviewer 2 preset? Your comments, pad banks and recordings will be deleted.")) return;
       var keep = state.settings;
       var keepSession = state.session;
       state = fromPreset(PRESETS[0]);
@@ -1650,7 +1650,7 @@
     renderMasthead();
     if (upgradedPreset) {
       save();
-      setTimeout(function () { toast(filledBankB ? "New in this version: bank B, with harsher comments." : "New preset comments were added to your reserve."); }, 600);
+      setTimeout(function () { toast(filledBankB ? "New in this version: pad bank B, with harsher comments." : "New preset comments were added to your reserve."); }, 600);
     }
 
     // On GitHub Pages (user.github.io/repo) point "Source code" at the repo;
@@ -1675,7 +1675,7 @@
       if (i >= 0) state.banks[bank()][i] = c.id;
       $("add-text").value = "";
       commit();
-      toast(i >= 0 ? "Added on pad " + PAD_LABELS[i] + " of bank " + bank() + "." : "Bank " + bank() + " is full, so the comment went to the reserve.");
+      toast(i >= 0 ? "Added on pad " + PAD_LABELS[i] + " of pad bank " + bank() + "." : "Pad bank " + bank() + " is full, so the comment went to the reserve.");
     });
 
     wireEditor();

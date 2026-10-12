@@ -54,7 +54,7 @@
       <div class="verdict">
         <p class="verdict-label" id="verdict-label">Reviewer 2 is waiting for your paper.</p>
         <blockquote class="verdict-quote" id="verdict-quote" aria-live="polite"></blockquote>
-        <p class="hint" id="random-hint">Press the stamp or <kbd>Space</kbd> for a random comment. Each pad plays with the key in its corner; <kbd>←</kbd> <kbd>→</kbd> switch bank. Right-click a pad to edit or record it, click a <b>+</b> pad to fill it.</p>
+        <p class="hint" id="random-hint">Press the stamp or <kbd>Space</kbd> for a random comment. Each pad plays with the key in its corner; <kbd>←</kbd> <kbd>→</kbd> switch pad bank. Right-click a pad to edit or record it, click a <b>+</b> pad to fill it.</p>
       </div>
     </section>
 
@@ -62,7 +62,7 @@
       <h2 id="report-title">Comments to the authors</h2>
       <div class="chassis">
         <div class="chassis-top">
-          <span class="chassis-label" id="bank-label">Bank A</span>
+          <span class="chassis-label" id="bank-label">Pad bank A</span>
           <div class="bank-bar" id="bank-bar" role="group" aria-label="Pad banks"></div>
         </div>
         <ol class="comments pads" id="board"></ol>
@@ -70,7 +70,7 @@
 
       <div class="editor-only" id="library-section">
         <h3>Reserve</h3>
-        <p class="note">Comments without a pad. Reviewer 2 can still draw them at random. “Add to pad” puts one on the first free pad, or drag it onto a pad or a bank button; drag a pad here to remove it from the grid.</p>
+        <p class="note">Comments without a pad. Reviewer 2 can still draw them at random. “Add to pad” puts one on the first free pad, or drag it onto a pad or a pad bank button; drag a pad here to remove it from the grid.</p>
         <ol class="comments library" id="library"></ol>
 
         <form class="add-form" id="add-form">
@@ -134,19 +134,19 @@
       <fieldset id="global-keys-box" hidden>
         <legend>Shortcuts in other apps</legend>
         <label class="check"><input type="checkbox" id="global-keys"> Play pads while another app is in front, for example during a presentation</label>
-        <p class="note">Hold <kbd id="global-keys-combo">Control + Option</kbd> and press a pad's key (1–4, Q–R, A–F, Z–V), <kbd>Space</kbd> for Reviewer 2, <kbd>←</kbd> <kbd>→</kbd> to switch bank or <kbd>Esc</kbd> to stop.</p>
+        <p class="note">Hold <kbd id="global-keys-combo">Control + Option</kbd> and press a pad's key (1–4, Q–R, A–F, Z–V), <kbd>Space</kbd> for Reviewer 2, <kbd>←</kbd> <kbd>→</kbd> to switch pad bank or <kbd>Esc</kbd> to stop.</p>
         <p class="note" id="global-keys-note"></p>
       </fieldset>
 
       <fieldset>
         <legend>Reviewer 2 draws from</legend>
         <label class="check"><input type="radio" name="random-from" value="all"> Every comment, including the reserve</label>
-        <label class="check"><input type="radio" name="random-from" value="board"> Only comments on a pad, in any bank</label>
+        <label class="check"><input type="radio" name="random-from" value="board"> Only comments on a pad, in any pad bank</label>
       </fieldset>
 
       <fieldset>
         <legend>Your board</legend>
-        <p class="note">Export saves comments and recordings to a file you can send to colleagues; a share link carries the comments and banks, without recordings. Import replaces the current board.</p>
+        <p class="note">Export saves comments and recordings to a file you can send to colleagues; a share link carries the comments and pad banks, without recordings. Import replaces the current board.</p>
         <div class="button-row">
           <button type="button" class="ink-btn" id="export-btn">Export board</button>
           <button type="button" class="ink-btn" id="import-btn">Import board</button>
@@ -239,7 +239,7 @@
         <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
       </button>
       <h2 id="share-heading">Share this board</h2>
-      <p>Whoever opens the link gets a copy of your comments, their types and the banks. Recordings are not included: for those, use Export board.</p>
+      <p>Whoever opens the link gets a copy of your comments, their types and the pad banks. Recordings are not included: for those, use Export board.</p>
       <div class="share-row">
         <input type="text" id="share-link" readonly aria-label="Share link">
         <button type="button" class="ink-btn" id="share-copy">Copy</button>
