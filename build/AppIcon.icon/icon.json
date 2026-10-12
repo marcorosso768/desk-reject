@@ -14,8 +14,10 @@
     {
       "layers" : [
         {
-          "image-name" : "stamp-light.png",
           "image-name-specializations" : [
+            {
+              "value" : "stamp-light.png"
+            },
             {
               "appearance" : "dark",
               "value" : "stamp-dark.png"

@@ -5,3 +5,6 @@ desk-reject-board.json
 .import.tgz
 dist/
 electron/repo.json
+
+# local notes, not published
+future_release.md

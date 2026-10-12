@@ -23,6 +23,7 @@
   // Pad banks, as on an MPC: A-H at most, letters always contiguous.
   var ALL_BANKS = "ABCDEFGH".split("");
   var MAX_BANKS = ALL_BANKS.length;
+  var DEFAULT_BANKS = 4; // a new board has A-D; + adds up to H, × in Edit pads removes (one always stays)
   var PADS = 16;
   // Pads are laid out 4 x 4, like a drum machine: keys follow the physical grid
   // (e.code), so they stay in place on any keyboard layout.
@@ -32,8 +33,8 @@
   var LONG_PRESS_MS = 550;
   // Revision of the built-in preset. Boards saved with an older one get the
   // new preset comments added (see upgradeFromPreset); 2 = bank B with the harsher comments,
-  // 3 = banks added and removed by the user, bank B ordered by colour.
-  var PRESET_REV = 3;
+  // 3 = banks added and removed by the user, bank B ordered by colour; 4 = C and D back by default.
+  var PRESET_REV = 4;
   // Where the code lives, for the "Source code" link when the page is served
   // from a custom domain (e.g. marcorosso.com/desk-reject/).
   var HOME_REPO = "https://github.com/marcorosso768/desk-reject";
@@ -48,21 +49,21 @@
 
   function emptyBanks(count) {
     var b = {};
-    ALL_BANKS.slice(0, clamp(count || 2, 1, MAX_BANKS)).forEach(function (n) { b[n] = new Array(PADS).fill(null); });
+    ALL_BANKS.slice(0, clamp(count || DEFAULT_BANKS, 1, MAX_BANKS)).forEach(function (n) { b[n] = new Array(PADS).fill(null); });
     return b;
   }
   // the letters in use, in order
   function lettersOf(banks) { return ALL_BANKS.filter(function (n) { return Array.isArray(banks[n]); }); }
 
   function defaultSettings() {
-    return { voiceURI: null, rate: 1, pitch: 1, randomFrom: "all", allVoices: false, bank: "A", globalKeys: false };
+    return { voiceURI: null, rate: 1, pitch: 1, randomFrom: "all", allVoices: false, bank: "A", globalKeys: false, effects: true, responses: true };
   }
 
   // Fill banks in order with the ids of comments flagged board: true (older
   // boards and the presets use that flag); anything beyond 64 goes to the reserve.
   function banksFromFlags(comments, flags) {
     var onBoard = flags.filter(Boolean).length;
-    var banks = emptyBanks(Math.max(2, Math.ceil(onBoard / PADS)));
+    var banks = emptyBanks(Math.max(DEFAULT_BANKS, Math.ceil(onBoard / PADS)));
     var n = 0;
     comments.forEach(function (c, i) {
       if (!flags[i] || n >= MAX_BANKS * PADS) return;
@@ -142,7 +143,7 @@
     if (raw.banks && typeof raw.banks === "object") {
       var last = -1;
       ALL_BANKS.forEach(function (n, k) { if (Array.isArray(raw.banks[n])) last = k; });
-      banks = emptyBanks(last + 1 || 2); // gaps are filled: letters stay contiguous
+      banks = emptyBanks(last + 1); // gaps are filled: letters stay contiguous
       var placed = new Set();
       lettersOf(banks).forEach(function (n) {
         var src = Array.isArray(raw.banks[n]) ? raw.banks[n] : [];
@@ -173,7 +174,9 @@
         randomFrom: s.randomFrom === "board" ? "board" : "all",
         allVoices: !!s.allVoices,
         bank: banks[s.bank] ? s.bank : "A",
-        globalKeys: !!s.globalKeys
+        globalKeys: !!s.globalKeys,
+        effects: s.effects !== false,
+        responses: s.responses !== false
       }
     };
   }
@@ -221,9 +224,8 @@
     if (!PRESETS[0] || b.presetRev >= PRESET_REV) return b;
     addPresetRev2(b);
     if (b.presetRev < 3) {
-      // 3: banks can be added and removed, so the empty C and D of older boards go
+      // 3: bank B, if untouched, takes the preset's new order (by colour, like A)
       if (b.banks.B) {
-        // and bank B, if untouched, takes the preset's new order (by colour, like A)
         var want = presetBankB();
         var cur = b.banks.B.map(function (id) {
           var c = id && b.comments.find(function (x) { return x.id === id; });
@@ -236,11 +238,12 @@
           b.banks.B = want.map(function (t) { return idOf[t]; });
         }
       }
-      var letters = lettersOf(b.banks);
-      while (letters.length > 2 && !b.banks[letters[letters.length - 1]].some(Boolean)) {
-        delete b.banks[letters.pop()];
-      }
       if (!b.banks[b.settings.bank]) b.settings.bank = "A";
+    }
+    if (b.presetRev < 4) {
+      // 4: boards trimmed to A-B by 1.2.x get the empty C and D back
+      var have = lettersOf(b.banks).length;
+      ALL_BANKS.slice(have, DEFAULT_BANKS).forEach(function (n) { b.banks[n] = new Array(PADS).fill(null); });
     }
     b.presetRev = PRESET_REV;
     presetUpgraded = true;
@@ -462,6 +465,7 @@
 
   function logComment(c) {
     state.session.log.push({ text: c.text, severity: c.severity, t: new Date().toISOString() });
+    Stats.record(c, state.session);
     save();
     renderMasthead();
   }
@@ -490,14 +494,56 @@
     $("verdict-label").textContent = "Reviewer 2 is waiting for your paper.";
   }
 
+  // Swipe left / right on the pads: next / previous pad bank (touch screens).
+  var lastSwipe = 0;
+  function wireSwipe() {
+    var board = $("board"), t0 = null;
+    board.addEventListener("touchstart", function (e) {
+      t0 = e.touches.length === 1 ? { x: e.touches[0].clientX, y: e.touches[0].clientY, t: Date.now() } : null;
+    }, { passive: true });
+    board.addEventListener("touchend", function (e) {
+      if (!t0 || !e.changedTouches.length) return;
+      var dx = e.changedTouches[0].clientX - t0.x, dy = e.changedTouches[0].clientY - t0.y, dt = Date.now() - t0.t;
+      t0 = null;
+      if (dt > 700 || Math.abs(dx) < 45 || Math.abs(dx) < 1.6 * Math.abs(dy)) return;
+      lastSwipe = Date.now();
+      bankSwipe(dx < 0 ? 1 : -1);
+    });
+    function bankSwipe(step) {
+      var ok = runAction({ type: "bank", step: step });
+      board.classList.remove("swipe-next", "swipe-prev", "swipe-edge");
+      void board.offsetWidth;
+      board.classList.add(ok ? (step > 0 ? "swipe-next" : "swipe-prev") : "swipe-edge");
+    }
+    // Two-finger swipe on a trackpad arrives as horizontal wheel events, with
+    // inertia: one gesture moves one bank, then waits for the wheel to settle.
+    var acc = 0, locked = false, quiet = null;
+    board.parentNode.addEventListener("wheel", function (e) {
+      if (e.ctrlKey || Math.abs(e.deltaX) <= Math.abs(e.deltaY)) return;
+      e.preventDefault(); // no back / forward page swipe in the browser
+      clearTimeout(quiet);
+      quiet = setTimeout(function () { acc = 0; locked = false; }, 220);
+      if (locked) return;
+      acc += e.deltaX;
+      if (Math.abs(acc) < 60) return;
+      locked = true;
+      bankSwipe(acc > 0 ? 1 : -1);
+    }, { passive: false });
+    board.addEventListener("animationend", function () { board.classList.remove("swipe-next", "swipe-prev", "swipe-edge"); });
+  }
+
   function attachPadGestures(btn, onTap, onHold) {
     // Long press (touch) or right click opens the editor, so any pad can be
     // rewritten or recorded without entering edit mode.
-    var pressTimer = null, longPressed = false;
+    var pressTimer = null, longPressed = false, sx = 0, sy = 0;
     btn.addEventListener("pointerdown", function (e) {
       if (e.pointerType === "mouse") return;
       longPressed = false;
+      sx = e.clientX; sy = e.clientY;
       pressTimer = setTimeout(function () { longPressed = true; onHold(); }, LONG_PRESS_MS);
+    });
+    btn.addEventListener("pointermove", function (e) {
+      if (pressTimer && Math.abs(e.clientX - sx) + Math.abs(e.clientY - sy) > 12) { clearTimeout(pressTimer); pressTimer = null; }
     });
     ["pointerup", "pointerleave", "pointercancel"].forEach(function (ev) {
       btn.addEventListener(ev, function () { clearTimeout(pressTimer); });
@@ -505,6 +551,7 @@
     btn.addEventListener("contextmenu", function (e) { e.preventDefault(); clearTimeout(pressTimer); if (!longPressed) onHold(); });
     btn.addEventListener("click", function () {
       if (longPressed) { longPressed = false; return; }
+      if (Date.now() - lastSwipe < 500) return; // the finger was swiping, not tapping
       onTap();
     });
   }
@@ -1159,6 +1206,8 @@
       document.querySelectorAll('input[name="random-from"]').forEach(function (r) { r.checked = r.value === state.settings.randomFrom; });
       renderVoiceSelect();
       toggleVoiceList(false);
+      $("effects").checked = !!state.settings.effects;
+      Stats.render();
       dlg.showModal();
     });
     $("voice-picker").addEventListener("click", function () { toggleVoiceList(); });
@@ -1170,6 +1219,11 @@
       $("global-keys").addEventListener("change", function (e) { state.settings.globalKeys = e.target.checked; save(); applyGlobalKeys(); });
     }
     $("voice-help").addEventListener("click", function () { $("voice-help-dialog").showModal(); });
+    $("effects").addEventListener("change", function (e) { state.settings.effects = e.target.checked; save(); if (e.target.checked) Fx.preview(); });
+    $("stats-reset").addEventListener("click", function () {
+      if (!window.confirm("Reset the statistics? Your board and the current manuscript are kept.")) return;
+      Stats.reset(); Stats.render();
+    });
     $("rate").addEventListener("input", function (e) { state.settings.rate = Number(e.target.value); $("rate-out").textContent = state.settings.rate.toFixed(2); save(); });
     $("pitch").addEventListener("input", function (e) { state.settings.pitch = Number(e.target.value); $("pitch-out").textContent = state.settings.pitch.toFixed(2); save(); });
     $("voice-test").addEventListener("click", function () { stopAll(); speak("Why should I care?", function () {}); });
@@ -1301,6 +1355,8 @@
     return d;
   }
 
+  var lastFxKey = null;
+
   function renderReport() {
     var s = state.session;
     var d = decide(s.log);
@@ -1328,7 +1384,15 @@
   function wireReport() {
     var dlg = $("report-dialog");
     $("report-pdf").textContent = PDF_LABEL;
-    $("report-open").addEventListener("click", function () { renderReport(); dlg.showModal(); });
+    $("report-open").addEventListener("click", function () {
+      renderReport();
+      dlg.showModal();
+      var s = state.session;
+      var key = s.ms + "#" + s.round + "#" + s.log.length;
+      if (s.log.length && state.settings.effects && key !== lastFxKey) { lastFxKey = key; Fx.decision(decide(s.log).label, dlg); }
+    });
+    $("report-responses").checked = !!state.settings.responses;
+    $("report-responses").addEventListener("change", function (e) { state.settings.responses = e.target.checked; save(); });
     $("report-title-input").addEventListener("input", function (e) { state.session.title = e.target.value.slice(0, 200); save(); });
     $("report-presenter").addEventListener("input", function (e) { state.session.presenter = e.target.value.slice(0, 120); save(); });
     $("report-next").addEventListener("click", function () {
@@ -1493,6 +1557,37 @@
       para("on behalf of the Editor", 10.5, "normal", SOFT, 0);
       drawStamp(doc, R - 24, ySign + 16, 21, RED); // beside the signature, below the text
 
+      // the authors' reply: one sarcastic response per comment
+      if (state.settings.responses && s.log.length) {
+        doc.addPage(); y = M;
+        font("CMUSerif", "bold", 19);
+        doc.text("Response to Reviewer 2", X, y);
+        y += 9;
+        para("We thank Reviewer 2 for the careful reading of our manuscript and for the constructive comments, which have greatly improved the paper. Below we respond to each comment in turn. The referee's comments are in italics.", 11.5, "normal", INK, 6);
+        var replies = Responses.pick(s.log);
+        s.log.forEach(function (e, i) {
+          font("CMUSerif", "italic", 11.5);
+          var q = doc.splitTextToSize(e.text, R - X - 10);
+          font("CMUSerif", "normal", 11.5);
+          var a = doc.splitTextToSize(replies[i], R - X - 10);
+          var need = (q.length + a.length) * 5.6 + 6;
+          if (y + need > H - M - 10) { doc.addPage(); y = M; }
+          font("CMUType", "normal", 10, SOFT);
+          doc.text((i + 1) + ".", X + 7, y, { align: "right" });
+          font("CMUSerif", "italic", 11.5, SOFT);
+          doc.text(q, X + 10, y);
+          y += q.length * 5.6 + 1;
+          font("CMUSerif", "normal", 11.5);
+          doc.text(a, X + 10, y);
+          y += a.length * 5.6 + 5;
+        });
+        if (y > H - M - 30) { doc.addPage(); y = M; }
+        y += 3;
+        para("We hope that the revised version is now suitable for publication, and we look forward to the next round.", 11.5, "normal", INK, 4);
+        para("Sincerely,", 11.5, "normal", INK, 1);
+        para(s.presenter ? s.presenter : "The Authors", 11.5, "italic", INK, 0);
+      }
+
       // footer on every page
       var pages = doc.getNumberOfPages();
       for (var p = 1; p <= pages; p++) {
@@ -1541,6 +1636,289 @@
     var deg2 = -rot * 180 / Math.PI;
     doc.text("2", cx - (w2 / 2) * Math.cos(rot), cy - (w2 / 2) * Math.sin(rot), { angle: deg2, baseline: "middle" });
   }
+
+  // ------------------------------------------------------------ decision effects
+  // When the report opens, the decision lands as a big rubber stamp with a
+  // thud; a reject gets a sad trombone, a major revision a drum roll of doom,
+  // an accept or a minor revision a fanfare and confetti. All the sounds are
+  // synthesised with Web Audio: no audio files.
+
+  var Fx = (function () {
+    var ctx = null;
+    function ac() {
+      var C = window.AudioContext || window.webkitAudioContext;
+      if (!C) return null;
+      if (!ctx) ctx = new C();
+      if (ctx.state === "suspended") ctx.resume();
+      return ctx;
+    }
+    function noise(c, dur) {
+      var b = c.createBuffer(1, Math.ceil(c.sampleRate * dur), c.sampleRate), d = b.getChannelData(0);
+      for (var i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+      var src = c.createBufferSource(); src.buffer = b; return src;
+    }
+    function env(c, t, peak, attack, decay) {
+      var g = c.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(peak, t + attack);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + attack + decay);
+      return g;
+    }
+    // the rubber stamp hitting the desk
+    function thud(c, t, strength) {
+      var k = strength || 1;
+      var o = c.createOscillator(); o.type = "sine";
+      o.frequency.setValueAtTime(140, t); o.frequency.exponentialRampToValueAtTime(42, t + 0.18);
+      var g = env(c, t, 0.9 * k, 0.004, 0.3); o.connect(g).connect(c.destination); o.start(t); o.stop(t + 0.36);
+      var n = noise(c, 0.2), f = c.createBiquadFilter(); f.type = "lowpass"; f.frequency.value = 900;
+      var gn = env(c, t, 0.5 * k, 0.002, 0.12); n.connect(f).connect(gn).connect(c.destination); n.start(t); n.stop(t + 0.2);
+    }
+    function brass(c, t, freq, dur, vol, bend) {
+      var o = c.createOscillator(); o.type = "sawtooth";
+      o.frequency.setValueAtTime(freq, t);
+      if (bend) o.frequency.linearRampToValueAtTime(freq * bend, t + dur);
+      var vib = c.createOscillator(), vg = c.createGain(); vib.frequency.value = 5.5; vg.gain.value = freq * 0.018;
+      vib.connect(vg).connect(o.frequency);
+      var f = c.createBiquadFilter(); f.type = "lowpass"; f.frequency.setValueAtTime(700, t); f.frequency.linearRampToValueAtTime(1500, t + dur * 0.3); f.Q.value = 2;
+      var g = c.createGain();
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.04);
+      g.gain.setValueAtTime(vol, t + dur * 0.75); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      o.connect(f).connect(g).connect(c.destination);
+      vib.start(t); o.start(t); o.stop(t + dur + 0.02); vib.stop(t + dur + 0.02);
+    }
+    function bell(c, t, freq, dur, vol) {
+      var o = c.createOscillator(); o.type = "triangle"; o.frequency.value = freq;
+      var g = env(c, t, vol, 0.01, dur); o.connect(g).connect(c.destination); o.start(t); o.stop(t + dur + 0.05);
+    }
+    var SOUNDS = {
+      "desk-reject": function (c, t) {
+        thud(c, t, 1); thud(c, t + 0.28, 1.15);
+        [233, 220, 208, 196].forEach(function (f, i) { brass(c, t + 0.75 + i * 0.42, f, i === 3 ? 1.1 : 0.38, 0.2, i === 3 ? 0.94 : 0); });
+      },
+      reject: function (c, t) {
+        thud(c, t, 1);
+        [294, 277, 262, 247].forEach(function (f, i) { brass(c, t + 0.45 + i * 0.4, f, i === 3 ? 1.0 : 0.36, 0.18, i === 3 ? 0.95 : 0); });
+      },
+      "major-revision": function (c, t) {
+        thud(c, t, 0.9);
+        brass(c, t + 0.4, 131, 0.22, 0.2); brass(c, t + 0.7, 131, 0.22, 0.2); brass(c, t + 1.0, 123, 1.2, 0.22, 0.97);
+      },
+      "minor-revision": function (c, t) {
+        thud(c, t, 0.6);
+        [523, 659, 784].forEach(function (f, i) { bell(c, t + 0.3 + i * 0.12, f, 0.5, 0.25); });
+        bell(c, t + 0.68, 1047, 0.9, 0.25);
+      },
+      accept: function (c, t) {
+        thud(c, t, 0.6);
+        [523, 659, 784, 1047].forEach(function (f, i) { bell(c, t + 0.28 + i * 0.1, f, 0.45, 0.22); });
+        [523, 659, 784, 1047].forEach(function (f) { bell(c, t + 0.75, f, 1.3, 0.13); });
+        brass(c, t + 0.75, 523, 1.1, 0.09);
+      }
+    };
+    function sound(key) {
+      var c = ac();
+      if (!c || !SOUNDS[key]) return;
+      SOUNDS[key](c, c.currentTime + 0.12);
+    }
+
+    function confetti(host) {
+      if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+      var cv = document.createElement("canvas");
+      cv.className = "fx-confetti";
+      host.appendChild(cv);
+      var dpr = window.devicePixelRatio || 1, W = window.innerWidth, H = window.innerHeight;
+      cv.width = W * dpr; cv.height = H * dpr;
+      var g = cv.getContext("2d"); g.scale(dpr, dpr);
+      var colors = ["#c8323f", "#1d4fa0", "#ffb43d", "#2e9e6b", "#8a4fd0", "#f2f2f2"];
+      var bits = [];
+      for (var i = 0; i < 170; i++) {
+        var left = i % 2 === 0;
+        bits.push({ x: left ? -10 : W + 10, y: H * (0.55 + Math.random() * 0.35),
+          vx: (left ? 1 : -1) * (4 + Math.random() * 9), vy: -(8 + Math.random() * 11),
+          w: 6 + Math.random() * 6, h: 3 + Math.random() * 4, r: Math.random() * 6, vr: (Math.random() - 0.5) * 0.4,
+          c: colors[i % colors.length] });
+      }
+      var t0 = performance.now();
+      (function frame(now) {
+        var t = (now - t0) / 1000;
+        g.clearRect(0, 0, W, H);
+        bits.forEach(function (b) {
+          b.vy += 0.32; b.vx *= 0.992; b.x += b.vx; b.y += b.vy; b.r += b.vr;
+          g.save(); g.translate(b.x, b.y); g.rotate(b.r); g.fillStyle = b.c;
+          g.globalAlpha = Math.max(0, Math.min(1, 3.2 - t));
+          g.fillRect(-b.w / 2, -b.h / 2, b.w, b.h * Math.abs(Math.cos(b.r * 2)) + 1);
+          g.restore();
+        });
+        if (t < 3.3) requestAnimationFrame(frame); else cv.remove();
+      })(t0);
+    }
+
+    // The overlay lives inside the open dialog, so it is drawn above it.
+    function decision(label, host) {
+      var key = label.toLowerCase().replace(/\s+/g, "-");
+      var happy = key === "accept" || key === "minor-revision";
+      var over = document.createElement("div");
+      over.className = "fx-overlay";
+      over.setAttribute("aria-hidden", "true");
+      var st = document.createElement("div");
+      st.className = "fx-stamp " + (happy ? "fx-happy" : "fx-sad");
+      st.textContent = label;
+      over.appendChild(st);
+      (host || document.body).appendChild(over);
+      var gone = false;
+      function end() { if (gone) return; gone = true; over.classList.add("fx-out"); setTimeout(function () { over.remove(); }, 350); }
+      over.addEventListener("click", end);
+      sound(key);
+      if (happy) setTimeout(function () { confetti(over); }, 260);
+      setTimeout(end, happy ? 2600 : 1900);
+    }
+
+    return { decision: decision, preview: function () { sound("accept"); } };
+  })();
+
+  // ------------------------------------------------------------ response to the referee
+  // A random, sarcastic reply for each comment; the pools follow the comment's type.
+
+  var Responses = (function () {
+    var POOLS = {
+      any: [
+        "We thank the referee for this insightful comment. We have added 47 robustness checks to the appendix, which now runs to 212 pages.",
+        "We are grateful for this suggestion, which we now address in footnote 38.",
+        "We agree with the referee and have rewritten the paper accordingly. It is now a different paper.",
+        "This is an excellent point. We now cite the referee's work three times.",
+        "We have thought about this comment very carefully, for several months, mostly at night.",
+        "We respectfully disagree, but we have made the change anyway.",
+        "Following the referee's advice, we now control for everything.",
+        "We thank the referee for reading the paper, which we take as a compliment.",
+        "As suggested, this result has been moved to the online appendix, where it will be safe.",
+        "We share the referee's concern. So did our coauthor, who has since left academia.",
+        "This point is now discussed at length in a new section, which the referee is welcome to skip.",
+        "We have addressed this comment in full. We kindly ask the referee not to check.",
+        "We are confident that this comment was meant constructively, and we have treated it as such."
+      ],
+      comment: [
+        "We have clarified the motivation in the introduction, now in bold.",
+        "We were also surprised that this was not surprising.",
+        "We have made the contribution clearer by repeating it in every paragraph.",
+        "The audience for this paper is now explicitly stated: it is the referee.",
+        "We now explain what we learn from this, in a box at the top of page 1."
+      ],
+      revise: [
+        "We now cluster the standard errors at every level we could think of. The results survive at the 10% level, on Tuesdays.",
+        "We have run the suggested test. It is significant, which we find encouraging.",
+        "We added an event study. The pre-trends are flat if one squints.",
+        "We now instrument the instrument.",
+        "We re-estimated the model with Callaway and Sant'Anna, de Chaisemartin and D'Haultfoeuille, Sun and Abraham, and our horoscope. All four agree.",
+        "A new appendix table reports 1,024 specifications. We show the best one in the main text.",
+        "We have added the requested robustness check, and then another one, just in case.",
+        "The first stage is now stronger, thanks to a more motivated research assistant."
+      ],
+      reject: [
+        "We thank the referee for the opportunity to submit this paper to a different journal.",
+        "We have taken this comment to heart, and to a field journal.",
+        "We are pleased that the referee read beyond the abstract this time.",
+        "We have resubmitted elsewhere, and we hope the referee was not assigned again.",
+        "We understand the referee's position and have forwarded it to our department chair.",
+        "We accept the referee's verdict with the serenity of authors who have seen worse."
+      ]
+    };
+    function shuffle(a) { for (var i = a.length - 1; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)); var t = a[i]; a[i] = a[j]; a[j] = t; } return a; }
+    // one reply per comment, without repeats until the pools run out
+    function pick(log) {
+      var bags = {};
+      return log.map(function (e) {
+        var sev = POOLS[e.severity] ? e.severity : "comment";
+        if (!bags[sev] || !bags[sev].length) bags[sev] = shuffle(POOLS[sev].concat(POOLS.any.filter(function () { return Math.random() < 0.6; })));
+        return bags[sev].pop();
+      });
+    }
+    return { pick: pick };
+  })();
+
+  // ------------------------------------------------------------ statistics
+  // Kept apart from the board, so importing, sharing or resetting a board
+  // does not touch them.
+
+  var Stats = (function () {
+    var KEY = "desk-reject:stats";
+    var st = load();
+    function load() {
+      try {
+        var raw = JSON.parse(localStorage.getItem(KEY)) || {};
+        return {
+          since: typeof raw.since === "string" ? raw.since : new Date().toISOString(),
+          played: Math.max(0, parseInt(raw.played, 10) || 0),
+          counts: raw.counts && typeof raw.counts === "object" ? raw.counts : {},
+          rounds: raw.rounds && typeof raw.rounds === "object" ? raw.rounds : {}
+        };
+      } catch (e) { return { since: new Date().toISOString(), played: 0, counts: {}, rounds: {} }; }
+    }
+    function persist() { try { localStorage.setItem(KEY, JSON.stringify(st)); } catch (e) { /* ignore */ } }
+    function record(c, session) {
+      st.played += 1;
+      var t = c.text.slice(0, 140);
+      st.counts[t] = (st.counts[t] || 0) + 1;
+      var keys = Object.keys(st.counts);
+      if (keys.length > 600) { keys.sort(function (a, b) { return st.counts[a] - st.counts[b]; }).slice(0, keys.length - 600).forEach(function (k) { delete st.counts[k]; }); }
+      var log = session.log;
+      st.rounds[session.ms + "#" + session.round] = {
+        ms: session.ms, round: session.round, title: session.title || "",
+        n: log.length, rejects: log.filter(function (e) { return e.severity === "reject"; }).length,
+        decision: decide(log).label, t: new Date().toISOString()
+      };
+      var rk = Object.keys(st.rounds);
+      if (rk.length > 400) rk.slice(0, rk.length - 400).forEach(function (k) { delete st.rounds[k]; });
+      persist();
+    }
+    function reset() { st = { since: new Date().toISOString(), played: 0, counts: {}, rounds: {} }; persist(); }
+    function row(label, value) {
+      var dt = document.createElement("dt"); dt.textContent = label;
+      var dd = document.createElement("dd"); dd.textContent = value;
+      return [dt, dd];
+    }
+    function render() {
+      var box = $("stats-body");
+      box.replaceChildren();
+      var rounds = Object.keys(st.rounds).map(function (k) { return st.rounds[k]; }).filter(function (r) { return r.n > 0; });
+      if (!st.played) {
+        var p = document.createElement("p"); p.className = "note"; p.textContent = "Nothing yet. Play some pads and Reviewer 2 starts keeping score.";
+        box.appendChild(p); return;
+      }
+      var mss = new Set(rounds.map(function (r) { return r.ms; }));
+      var dec = {};
+      rounds.forEach(function (r) { dec[r.decision] = (dec[r.decision] || 0) + 1; });
+      var order = ["Accept", "Minor revision", "Major revision", "Reject", "Desk reject"];
+      var dl = document.createElement("dl");
+      dl.className = "stats-list";
+      [].concat(
+        row("Comments played", String(st.played)),
+        row("Manuscripts", mss.size + " (" + rounds.length + " round" + (rounds.length === 1 ? "" : "s") + ")"),
+        row("Decisions", order.filter(function (k) { return dec[k]; }).map(function (k) { return k + " " + dec[k]; }).join(" · ") || "none yet"),
+        row("Acceptance rate", rounds.length ? Math.round(100 * (dec.Accept || 0) / rounds.length) + "%" : "n/a")
+      ).forEach(function (el) { dl.appendChild(el); });
+      var worst = rounds.slice().sort(function (a, b) { return b.rejects - a.rejects || b.n - a.n; })[0];
+      if (worst && worst.rejects) {
+        row("Most battered paper", (worst.title ? "“" + worst.title + "”, " : "") + worst.ms + ", round " + worst.round + ": " + worst.rejects + " reject comment" + (worst.rejects > 1 ? "s" : "")).forEach(function (el) { dl.appendChild(el); });
+      }
+      box.appendChild(dl);
+      var top = Object.keys(st.counts).sort(function (a, b) { return st.counts[b] - st.counts[a]; }).slice(0, 5);
+      if (top.length) {
+        var h = document.createElement("p"); h.className = "stats-sub"; h.textContent = "Favourite comments";
+        var ol = document.createElement("ol"); ol.className = "stats-top";
+        top.forEach(function (t) {
+          var li = document.createElement("li");
+          var span = document.createElement("span"); span.textContent = t;
+          var b = document.createElement("b"); b.textContent = "× " + st.counts[t];
+          li.append(span, b); ol.appendChild(li);
+        });
+        box.append(h, ol);
+      }
+      var since = document.createElement("p"); since.className = "note";
+      since.textContent = "Since " + new Date(st.since).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }) + ". Kept on this device only.";
+      box.appendChild(since);
+    }
+    return { record: record, render: render, reset: reset };
+  })();
 
   // ------------------------------------------------------------ share link
   // A board travels in the address itself (#board=…): texts, types and banks,
@@ -1790,6 +2168,7 @@
     wireSettings();
     wireReport();
     wireShare();
+    wireSwipe();
     wireUpdateBanner();
     wireKeys();
 

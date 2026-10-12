@@ -145,6 +145,17 @@
       </fieldset>
 
       <fieldset>
+        <legend>Report</legend>
+        <label class="check"><input type="checkbox" id="effects"> Stamp the decision with sound and, for the lucky ones, confetti</label>
+      </fieldset>
+
+      <fieldset>
+        <legend>Statistics</legend>
+        <div id="stats-body"></div>
+        <button type="button" class="text-btn danger" id="stats-reset">Reset statistics</button>
+      </fieldset>
+
+      <fieldset>
         <legend>Your board</legend>
         <p class="note">Export saves comments and recordings to a file you can send to colleagues; a share link carries the comments and pad banks, without recordings. Import replaces the current board.</p>
         <div class="button-row">
@@ -224,6 +235,7 @@
         <span class="report-decision" id="report-decision">Accept</span>
       </div>
       <p class="note" id="report-note"></p>
+      <label class="check report-opt"><input type="checkbox" id="report-responses"> Add the authors' response to Reviewer 2 to the PDF</label>
       <div class="panel-actions">
         <button type="button" class="text-btn" id="report-new">New manuscript</button>
         <button type="button" class="text-btn" id="report-next">Next round</button>
