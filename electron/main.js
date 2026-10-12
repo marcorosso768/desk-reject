@@ -7,8 +7,10 @@
  *   - asks macOS for microphone access when Record is pressed
  *   - swaps the Dock / window icon when the system switches light <-> dark
  *     (on macOS 26+ the packaged app leaves this to the system, see afterPack.js)
- *   - checks GitHub Releases once at startup and offers newer versions; on a
- *     Mac it installs them itself (mac-updater.js), elsewhere it opens the installer
+ *   - checks GitHub Releases once at startup and offers newer versions, with a
+ *     Sparkle-style update window; on a Mac it installs them itself
+ *     (mac-updater.js), elsewhere it opens the installer
+ *   - a two-column About window with the credits
  *   - optional global shortcuts, so pads play while another app is in front
  *   - saves the referee report PDF through the system's Save dialog
  */
@@ -102,29 +104,97 @@ function pickAsset(assets) {
   return files.find((a) => /\.AppImage$/i.test(a.name));
 }
 
-// Download with the progress shown on the Dock / taskbar icon, then open the
-// installer: on a Mac the dmg window, where the app is dragged onto Applications.
-// Progress for the page's update banner, and on the Dock / taskbar icon.
-function updateStatus(status) {
-  if (!win) return;
-  if (status.state === "progress") win.setProgressBar(status.total ? status.transferred / status.total : 2);
-  else if (status.state !== "downloading") win.setProgressBar(-1);
-  win.webContents.send("dr:update", status);
+// ---- the update window (Sparkle style): a small separate window with the
+// app icon, a status line, a progress bar and Cancel; see update-window.html.
+
+const UpdateUI = (() => {
+  let uw = null, state = null, onAction = null;
+  ipcMain.on("upd:action", (e, action) => {
+    if (!uw || e.sender !== uw.webContents) return;
+    const fn = onAction;
+    if (fn) fn(action);
+  });
+  function open() {
+    if (uw) { uw.show(); return; }
+    uw = new BrowserWindow({
+      width: 480, height: 108, useContentSize: true,
+      resizable: false, minimizable: false, maximizable: false, fullscreenable: false,
+      title: "Updating Desk Reject",
+      show: false,
+      backgroundColor: nativeTheme.shouldUseDarkColors ? "#2a2a2c" : "#ececec",
+      webPreferences: { preload: path.join(__dirname, "update-preload.js"), contextIsolation: true, sandbox: true, nodeIntegration: false }
+    });
+    uw.setMenuBarVisibility(false);
+    uw.webContents.on("will-navigate", (e) => e.preventDefault());
+    uw.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+    uw.webContents.once("did-finish-load", () => { if (state) uw.webContents.send("upd:state", state); uw.show(); });
+    // closing the window is the same as Cancel (or Later, once the update is ready)
+    uw.on("close", () => { const fn = onAction; onAction = null; if (fn) fn("closed"); });
+    uw.on("closed", () => { uw = null; });
+    uw.loadURL(ORIGIN + "/electron/update-window.html");
+  }
+  // st: { title, detail?, progress (0-1, or null = indeterminate), transferred?, total?, cancel?, primary?, secondary? }
+  function set(st, handler) {
+    state = st;
+    if (handler !== undefined) onAction = handler;
+    if (uw && !uw.webContents.isLoading()) uw.webContents.send("upd:state", st);
+    if (win) {
+      if (typeof st.progress === "number") win.setProgressBar(st.progress);
+      else win.setProgressBar(st.busy ? 2 : -1);
+    }
+  }
+  function close() {
+    onAction = null; state = null;
+    if (win) win.setProgressBar(-1);
+    if (uw) { const w = uw; uw = null; w.destroy(); }
+  }
+  return { open, set, close, isOpen: () => !!uw };
+})();
+
+const releasesURL = (repo, rel) => (rel && rel.html_url) || "https://github.com/" + repo + "/releases";
+const fmtMB = (n) => (n / 1048576).toFixed(1) + " MB";
+
+async function upToDate(repo, current) {
+  const { response } = await dialog.showMessageBox(win, {
+    type: "info",
+    buttons: ["OK", "Version History"],
+    defaultId: 0,
+    cancelId: 0,
+    message: "You're up to date!",
+    detail: "Desk Reject " + current + " is currently the newest version available."
+  });
+  if (response === 1) shell.openExternal("https://github.com/" + repo + "/releases");
 }
 
+function failed(message, detail) {
+  UpdateUI.close();
+  return dialog.showMessageBox(win, { type: "warning", message, detail: String(detail || "") });
+}
+
+// Windows and Linux (and a Mac that cannot replace itself): download the
+// installer with the update window, then open it.
 function downloadInstaller(asset, version) {
   if (!win) return;
   const ses = win.webContents.session;
-  ses.once("will-download", (_e, item) => {
+  let item = null, cancelled = false;
+  UpdateUI.open();
+  UpdateUI.set({ title: "Downloading Desk Reject " + version + "…", progress: null, busy: true, cancel: true }, (action) => {
+    if (action === "cancel" || action === "closed") { cancelled = true; if (item) item.cancel(); UpdateUI.close(); }
+  });
+  ses.once("will-download", (_e, it) => {
+    item = it;
+    if (cancelled) { item.cancel(); return; }
     const target = path.join(app.getPath("downloads"), asset.name);
     item.setSavePath(target);
     item.on("updated", () => {
-      const total = item.getTotalBytes();
-      updateStatus({ state: "progress", version, transferred: item.getReceivedBytes(), total: total || asset.size || 0 });
+      const total = item.getTotalBytes() || asset.size || 0, got = item.getReceivedBytes();
+      UpdateUI.set({ title: "Downloading Desk Reject " + version + "…", progress: total ? got / total : null, busy: true,
+                     detail: fmtMB(got) + (total ? " of " + fmtMB(total) : ""), cancel: true });
     });
-    item.once("done", async (_e2, state) => {
-      updateStatus({ state: state === "completed" ? "ready" : "failed", version });
-      if (state !== "completed") {
+    item.once("done", async (_e2, st) => {
+      if (cancelled || st === "cancelled") return;
+      UpdateUI.close();
+      if (st !== "completed") {
         dialog.showMessageBox(win, { type: "warning", message: "The download did not finish", detail: "Try again with Check for Updates…, or download it from the Releases page." });
         return;
       }
@@ -137,7 +207,6 @@ function downloadInstaller(asset, version) {
       dialog.showMessageBox(win, { type: "info", message: "Desk Reject " + version + " downloaded", detail: how });
     });
   });
-  updateStatus({ state: "downloading", version });
   win.webContents.downloadURL(asset.browser_download_url);
 }
 
@@ -154,44 +223,54 @@ function canSelfInstall() {
 
 async function installMacUpdate(rel, repo, version) {
   const yml = (rel.assets || []).find((a) => a.name === "latest-mac.yml");
+  const abort = new AbortController();
+  let cancelled = false;
+  const onCancel = (action) => {
+    if (action === "cancel" || action === "closed") { cancelled = true; abort.abort(); UpdateUI.close(); }
+  };
+  UpdateUI.open();
+  UpdateUI.set({ title: "Downloading Desk Reject " + version + "…", progress: null, busy: true, cancel: true }, onCancel);
   try {
     if (!yml) throw new Error("the release has no latest-mac.yml");
-    const res = await net.fetch(yml.browser_download_url);
+    const res = await net.fetch(yml.browser_download_url, { signal: abort.signal });
     if (!res.ok) throw new Error("latest-mac.yml: HTTP " + res.status);
     const info = macUpdater.parseLatestYml(await res.text());
     info.version = info.version || version;
-    updateStatus({ state: "downloading", version: info.version });
+    let unpacking = false;
     const launch = await macUpdater.prepareUpdate({
-      fetchImpl: (u) => net.fetch(u),
+      fetchImpl: (u) => net.fetch(u, { signal: abort.signal }),
       repo,
       info,
       arch: macArch(),
       execPath: process.execPath,
       workRoot: updatesDir(),
-      onProgress: (p) => updateStatus({ state: "progress", version: info.version, transferred: p.transferred, total: p.total })
+      onProgress: (p) => {
+        if (cancelled || unpacking) return;
+        if (p.total && p.transferred >= p.total) {
+          // download done: checksum, unzip and signature check follow
+          unpacking = true;
+          UpdateUI.set({ title: "Verifying and extracting the update…", progress: null, busy: true, detail: fmtMB(p.total), cancel: true });
+          return;
+        }
+        UpdateUI.set({ title: "Downloading Desk Reject " + info.version + "…", progress: p.total ? p.transferred / p.total : null, busy: true,
+                       transferred: p.transferred, total: p.total, cancel: true });
+      }
     });
-    updateStatus({ state: "ready", version: info.version });
-    const { response } = await dialog.showMessageBox(win, {
-      type: "info",
-      buttons: ["Restart Now", "Later"],
-      defaultId: 0,
-      cancelId: 1,
-      message: "Desk Reject " + info.version + " is ready",
-      detail: "Restart now to finish, or keep working: the update is installed when you quit."
+    if (cancelled) return;
+    // Ready: Install and Relaunch now, or Later (installed when the app quits).
+    UpdateUI.set({ title: "Ready to install Desk Reject " + info.version, progress: 1,
+                   detail: "Or later, when you quit.", primary: "Install and Relaunch", secondary: "Later" }, (action) => {
+      if (action === "primary") { UpdateUI.close(); launch({ relaunch: true }); app.quit(); }
+      else { pendingMacInstaller = launch; UpdateUI.close(); }
     });
-    if (response === 0) { launch({ relaunch: true }); app.quit(); }
-    else pendingMacInstaller = launch;
   } catch (err) {
-    updateStatus({ state: "failed", version });
+    if (cancelled || (err && err.name === "AbortError")) return;
     // Could not update in place: fall back to downloading the dmg.
     const asset = pickAsset(rel.assets || []);
-    await dialog.showMessageBox(win, {
-      type: "warning",
-      message: "The update could not be installed automatically",
-      detail: String(err.message || err) + (asset ? "\n\nThe installer will be downloaded instead." : "")
-    });
+    await failed("The update could not be installed automatically",
+      String(err.message || err) + (asset ? "\n\nThe installer will be downloaded instead." : ""));
     if (asset) downloadInstaller(asset, version);
-    else shell.openExternal(rel.html_url || "https://github.com/" + repo + "/releases/latest");
+    else shell.openExternal(releasesURL(repo, rel));
   }
 }
 
@@ -203,48 +282,74 @@ const prefsFile = () => path.join(app.getPath("userData"), "update-prefs.json");
 function readPrefs() { try { return JSON.parse(fs.readFileSync(prefsFile(), "utf8")); } catch (e) { return {}; } }
 function writePrefs(p) { try { fs.writeFileSync(prefsFile(), JSON.stringify(p)); } catch (e) { /* ignore */ } }
 
+// The text of the release on GitHub, shortened, for the "available" dialog.
+function releaseNotes(rel) {
+  const body = String((rel && rel.body) || "").replace(/\r/g, "").replace(/^#+\s*/gm, "").replace(/\*\*|`/g, "").trim();
+  if (!body) return "";
+  return body.length > 600 ? body.slice(0, 600).replace(/\s+\S*$/, "") + "…" : body;
+}
+
+let checking = false;
 async function checkForUpdates(manual) {
+  if (checking) { if (manual && UpdateUI.isOpen()) UpdateUI.open(); return; }
   const repo = repoSlug();
   if (!repo) {
     if (manual) dialog.showMessageBox(win, { type: "info", message: "Update checks are not configured", detail: "Set the GitHub repository in package.json (\"repository\") or build the app with the release workflow." });
     return;
   }
+  checking = true;
+  const abort = new AbortController();
+  let cancelled = false;
+  if (manual) {
+    UpdateUI.open();
+    UpdateUI.set({ title: "Checking for updates…", progress: null, busy: true, cancel: true }, (action) => {
+      if (action === "cancel" || action === "closed") { cancelled = true; abort.abort(); UpdateUI.close(); }
+    });
+  }
   try {
     const res = await net.fetch("https://api.github.com/repos/" + repo + "/releases/latest", {
-      headers: { "Accept": "application/vnd.github+json", "User-Agent": "Desk-Reject/" + app.getVersion() }
+      headers: { "Accept": "application/vnd.github+json", "User-Agent": "Desk-Reject/" + app.getVersion() },
+      signal: abort.signal
     });
     if (!res.ok) throw new Error("HTTP " + res.status);
     const rel = await res.json();
+    if (cancelled) return;
     const latest = String(rel.tag_name || "").replace(/^v/, "");
     const current = app.getVersion();
     const prefs = readPrefs();
+    UpdateUI.close();
     if (!newer(latest, current)) {
-      if (manual) dialog.showMessageBox(win, { type: "info", message: "Desk Reject is up to date", detail: "You have version " + current + "." });
+      if (manual) await upToDate(repo, current);
       return;
     }
     if (!manual && prefs.skip === latest) return;
     const selfInstall = canSelfInstall();
+    const notes = releaseNotes(rel);
     const { response } = await dialog.showMessageBox(win, {
       type: "info",
-      buttons: [selfInstall ? "Install Update" : "Download", "Later", "Skip This Version"],
+      buttons: [selfInstall ? "Install Update" : "Download Update", "Remind Me Later", "Skip This Version"],
       defaultId: 0,
       cancelId: 1,
-      message: "Desk Reject " + latest + " is available",
-      detail: "You have version " + current + ". " + (selfInstall
-        ? "The update is downloaded and checked, then Desk Reject restarts with the new version."
+      message: "A new version of Desk Reject is available!",
+      detail: "Desk Reject " + latest + " is now available (you have " + current + "). " + (selfInstall
+        ? "It is downloaded and checked, then Desk Reject restarts with the new version."
         : "The installer is downloaded to your Downloads folder and opened for you.")
+        + (notes ? "\n\n" + notes : "")
     });
     if (response === 0) {
       if (selfInstall) installMacUpdate(rel, repo, latest);
       else {
         const asset = pickAsset(rel.assets || []);
         if (asset) downloadInstaller(asset, latest);
-        else shell.openExternal(rel.html_url || "https://github.com/" + repo + "/releases/latest"); // nothing for this system yet
+        else shell.openExternal(releasesURL(repo, rel)); // nothing for this system yet
       }
     }
     if (response === 2) writePrefs(Object.assign(prefs, { skip: latest }));
   } catch (e) {
-    if (manual) dialog.showMessageBox(win, { type: "warning", message: "Could not check for updates", detail: String(e.message || e) });
+    if (cancelled || (e && e.name === "AbortError")) return;
+    if (manual) await failed("Could not check for updates", e.message || e);
+  } finally {
+    checking = false;
   }
 }
 
@@ -293,6 +398,33 @@ async function saveReportPdf(name, bytes) {
   return { ok: true, name: path.basename(filePath) };
 }
 
+// ----------------------------------------------------------------- about
+// A two-column About window (icon, name and version on the left, credits on
+// the right), instead of the standard panel.
+
+let aboutWin = null;
+function showAbout() {
+  if (aboutWin) { aboutWin.show(); aboutWin.focus(); return; }
+  aboutWin = new BrowserWindow({
+    width: 760, height: 420, useContentSize: true,
+    resizable: false, minimizable: false, maximizable: false, fullscreenable: false,
+    title: "About Desk Reject",
+    show: false,
+    backgroundColor: nativeTheme.shouldUseDarkColors ? "#232325" : "#ececec",
+    ...(process.platform === "darwin" ? { titleBarStyle: "hiddenInset" } : {}),
+    webPreferences: { preload: path.join(__dirname, "about-preload.js"), contextIsolation: true, sandbox: true, nodeIntegration: false }
+  });
+  aboutWin.setMenuBarVisibility(false);
+  aboutWin.webContents.on("will-navigate", (e) => e.preventDefault());
+  aboutWin.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  aboutWin.once("ready-to-show", () => aboutWin.show());
+  aboutWin.on("closed", () => { aboutWin = null; });
+  aboutWin.loadURL(ORIGIN + "/electron/about-window.html");
+}
+ipcMain.on("about:open", (e, url) => {
+  if (aboutWin && e.sender === aboutWin.webContents && /^https:\/\//.test(url)) shell.openExternal(url);
+});
+
 // ------------------------------------------------------------------- menu
 
 function buildMenu() {
@@ -302,14 +434,15 @@ function buildMenu() {
   const template = [
     ...(mac ? [{
       label: app.name,
-      submenu: [{ role: "about" }, check, { type: "separator" }, { role: "services" }, { type: "separator" },
+      submenu: [{ label: "About Desk Reject", click: showAbout }, check, { type: "separator" }, { role: "services" }, { type: "separator" },
                 { role: "hide" }, { role: "hideOthers" }, { role: "unhide" }, { type: "separator" }, { role: "quit" }]
     }] : [{ label: "File", submenu: [check, { type: "separator" }, { role: "quit" }] }]),
     { role: "editMenu" },
     { label: "View", submenu: [{ role: "reload" }, { role: "toggleDevTools" }, { type: "separator" },
                                { role: "resetZoom" }, { role: "zoomIn" }, { role: "zoomOut" }, { type: "separator" }, { role: "togglefullscreen" }] },
     { role: "windowMenu" },
-    { role: "help", submenu: repo ? [{ label: "Source Code", click: () => shell.openExternal("https://github.com/" + repo) }] : [] }
+    { role: "help", submenu: [...(mac ? [] : [{ label: "About Desk Reject", click: showAbout }]),
+                               ...(repo ? [{ label: "Source Code", click: () => shell.openExternal("https://github.com/" + repo) }] : [])] }
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }

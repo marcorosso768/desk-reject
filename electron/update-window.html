@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self'; style-src 'self'; script-src 'self'">
+<title>Updating Desk Reject</title>
+<link rel="stylesheet" href="update-window.css">
+</head>
+<body>
+  <main class="upd">
+    <picture class="icon">
+      <source id="icon-dark" media="(prefers-color-scheme: dark)" srcset="../assets/icons/icon-mac-1024-dark.png">
+      <img id="icon" src="../assets/icons/icon-mac-1024.png" alt="" width="64" height="64">
+    </picture>
+    <div class="body">
+      <p class="title" id="title">Checking for updates…</p>
+      <div class="track" id="track"><div class="bar" id="bar"></div></div>
+      <div class="foot">
+        <span class="detail" id="detail"></span>
+        <span class="buttons">
+          <button type="button" id="secondary" hidden>Later</button>
+          <button type="button" id="primary" class="default" hidden>Install and Relaunch</button>
+          <button type="button" id="cancel">Cancel</button>
+        </span>
+      </div>
+    </div>
+  </main>
+  <script src="update-window.js"></script>
+</body>
+</html>

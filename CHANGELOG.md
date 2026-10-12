@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.3.0
+
+- Desktop: updates in a small window of their own, Sparkle style: app icon, status ("Checking for updates…", download with megabytes and progress bar, "Verifying and extracting…"), **Cancel**, and **Install and Relaunch** / **Later** when ready. "You're up to date!" with **Version History**; "A new version is available" with the release notes, **Install Update**, **Remind Me Later**, **Skip This Version**. The progress banner at the bottom of the page is gone.
+- Desktop: a new About window: icon, version and copyright on the left; project links and credits (typefaces, libraries, license) on the right.
+
 ## 1.2.3
 
 - macOS: the icon with the dark stamp in dark mode (fixed in 1.2.2) is confirmed in the Icon Composer file: the "Stamp" layer has only `image-name-specializations`.

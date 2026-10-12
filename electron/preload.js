@@ -18,7 +18,5 @@ contextBridge.exposeInMainWorld("deskReject", {
   setGlobalShortcuts: (enabled) => ipcRenderer.invoke("dr:global-shortcuts", !!enabled),
   onShortcut: (cb) => { ipcRenderer.on("dr:shortcut", (_e, action) => cb(action)); },
   // referee report: the page makes the PDF, the app asks where to save it
-  savePdf: (name, bytes) => ipcRenderer.invoke("dr:save-pdf", String(name || "report.pdf"), bytes),
-  // update download: { state: "downloading" | "progress" | "ready" | "failed", version, transferred, total }
-  onUpdate: (cb) => { ipcRenderer.on("dr:update", (_e, status) => cb(status)); }
+  savePdf: (name, bytes) => ipcRenderer.invoke("dr:save-pdf", String(name || "report.pdf"), bytes)
 });
