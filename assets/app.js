@@ -20,7 +20,9 @@
   var PRESETS = window.DESK_REJECT_PRESETS || [];
   var SEVERITIES = ["comment", "revise", "reject"];
   var MAX_REC_MS = 8000;
-  var BANKS = ["A", "B", "C", "D"];
+  // Pad banks, as on an MPC: A-H at most, letters always contiguous.
+  var ALL_BANKS = "ABCDEFGH".split("");
+  var MAX_BANKS = ALL_BANKS.length;
   var PADS = 16;
   // Pads are laid out 4 x 4, like a drum machine: keys follow the physical grid
   // (e.code), so they stay in place on any keyboard layout.
@@ -29,8 +31,9 @@
   var PAD_LABELS = "1234QWERASDFZXCV".split("");
   var LONG_PRESS_MS = 550;
   // Revision of the built-in preset. Boards saved with an older one get the
-  // new preset comments added (see upgradeFromPreset); 2 = bank B with the harsher comments.
-  var PRESET_REV = 2;
+  // new preset comments added (see upgradeFromPreset); 2 = bank B with the harsher comments,
+  // 3 = banks added and removed by the user, bank B ordered by colour.
+  var PRESET_REV = 3;
   // Where the code lives, for the "Source code" link when the page is served
   // from a custom domain (e.g. marcorosso.com/desk-reject/).
   var HOME_REPO = "https://github.com/marcorosso768/desk-reject";
@@ -43,11 +46,13 @@
     return "c" + Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-3);
   }
 
-  function emptyBanks() {
+  function emptyBanks(count) {
     var b = {};
-    BANKS.forEach(function (n) { b[n] = new Array(PADS).fill(null); });
+    ALL_BANKS.slice(0, clamp(count || 2, 1, MAX_BANKS)).forEach(function (n) { b[n] = new Array(PADS).fill(null); });
     return b;
   }
+  // the letters in use, in order
+  function lettersOf(banks) { return ALL_BANKS.filter(function (n) { return Array.isArray(banks[n]); }); }
 
   function defaultSettings() {
     return { voiceURI: null, rate: 1, pitch: 1, randomFrom: "all", allVoices: false, bank: "A", globalKeys: false };
@@ -56,11 +61,12 @@
   // Fill banks in order with the ids of comments flagged board: true (older
   // boards and the presets use that flag); anything beyond 64 goes to the reserve.
   function banksFromFlags(comments, flags) {
-    var banks = emptyBanks();
+    var onBoard = flags.filter(Boolean).length;
+    var banks = emptyBanks(Math.max(2, Math.ceil(onBoard / PADS)));
     var n = 0;
     comments.forEach(function (c, i) {
-      if (!flags[i] || n >= BANKS.length * PADS) return;
-      banks[BANKS[Math.floor(n / PADS)]][n % PADS] = c.id;
+      if (!flags[i] || n >= MAX_BANKS * PADS) return;
+      banks[ALL_BANKS[Math.floor(n / PADS)]][n % PADS] = c.id;
       n += 1;
     });
     return banks;
@@ -94,7 +100,7 @@
 
   function sanitizeBankNames(raw) {
     var out = {};
-    BANKS.forEach(function (n) { if (raw && typeof raw[n] === "string" && raw[n].trim()) out[n] = raw[n].trim().slice(0, 30); });
+    ALL_BANKS.forEach(function (n) { if (raw && typeof raw[n] === "string" && raw[n].trim()) out[n] = raw[n].trim().slice(0, 30); });
     return out;
   }
 
@@ -134,9 +140,11 @@
 
     var banks;
     if (raw.banks && typeof raw.banks === "object") {
-      banks = emptyBanks();
+      var last = -1;
+      ALL_BANKS.forEach(function (n, k) { if (Array.isArray(raw.banks[n])) last = k; });
+      banks = emptyBanks(last + 1 || 2); // gaps are filled: letters stay contiguous
       var placed = new Set();
-      BANKS.forEach(function (n) {
+      lettersOf(banks).forEach(function (n) {
         var src = Array.isArray(raw.banks[n]) ? raw.banks[n] : [];
         for (var i = 0; i < PADS; i++) {
           var id = src[i];
@@ -164,7 +172,7 @@
         pitch: clamp(Number(s.pitch) || 1, 0.5, 1.5),
         randomFrom: s.randomFrom === "board" ? "board" : "all",
         allVoices: !!s.allVoices,
-        bank: BANKS.indexOf(s.bank) >= 0 ? s.bank : "A",
+        bank: banks[s.bank] ? s.bank : "A",
         globalKeys: !!s.globalKeys
       }
     };
@@ -175,12 +183,12 @@
   // A board saved with an older preset keeps everything the user did, and gains
   // the comments added to the preset since: if bank B is still empty they fill
   // it as in the preset, otherwise they wait in the reserve.
-  var upgradedPreset = false, filledBankB = false;
-  function upgradeFromPreset(b) {
-    if (!PRESETS[0] || b.presetRev >= PRESET_REV) return b;
+  var upgradedPreset = false, filledBankB = false, presetUpgraded = false;
+  function addPresetRev2(b) {
+    if (b.presetRev >= 2) return;
     var byText = new Map(b.comments.map(function (c) { return [c.text.trim().toLowerCase(), c]; }));
     var onPad = new Set();
-    BANKS.forEach(function (k) { b.banks[k].forEach(function (id) { if (id) onPad.add(id); }); });
+    lettersOf(b.banks).forEach(function (k) { b.banks[k].forEach(function (id) { if (id) onPad.add(id); }); });
     var bEmpty = !b.banks.B.some(Boolean);
     var pads = 0, added = 0, filled = 0;
     PRESETS[0].comments.forEach(function (pc) {
@@ -200,8 +208,42 @@
     });
     b.bankNames = {}; // banks are shown by letter only
     filledBankB = filled > 0;
-    b.presetRev = PRESET_REV;
     upgradedPreset = added > 0 || filled > 0;
+  }
+
+  // Preset B as it is now (pads 17-32 of the preset), lower-cased texts.
+  function presetBankB() {
+    return PRESETS[0].comments.filter(function (c) { return c.board !== false; })
+      .slice(PADS, 2 * PADS).map(function (c) { return c.text.trim().toLowerCase(); });
+  }
+
+  function upgradeFromPreset(b) {
+    if (!PRESETS[0] || b.presetRev >= PRESET_REV) return b;
+    addPresetRev2(b);
+    if (b.presetRev < 3) {
+      // 3: banks can be added and removed, so the empty C and D of older boards go
+      if (b.banks.B) {
+        // and bank B, if untouched, takes the preset's new order (by colour, like A)
+        var want = presetBankB();
+        var cur = b.banks.B.map(function (id) {
+          var c = id && b.comments.find(function (x) { return x.id === id; });
+          return c ? c.text.trim().toLowerCase() : null;
+        });
+        var same = cur.every(Boolean) && cur.slice().sort().join("|") === want.slice().sort().join("|");
+        if (same) {
+          var idOf = {};
+          cur.forEach(function (t, i) { idOf[t] = b.banks.B[i]; });
+          b.banks.B = want.map(function (t) { return idOf[t]; });
+        }
+      }
+      var letters = lettersOf(b.banks);
+      while (letters.length > 2 && !b.banks[letters[letters.length - 1]].some(Boolean)) {
+        delete b.banks[letters.pop()];
+      }
+      if (!b.banks[b.settings.bank]) b.settings.bank = "A";
+    }
+    b.presetRev = PRESET_REV;
+    presetUpgraded = true;
     return b;
   }
 
@@ -227,18 +269,20 @@
 
   function byId(id) { return state.comments.find(function (c) { return c.id === id; }) || null; }
   function bank() { return state.settings.bank; }
+  function banksIn() { return lettersOf(state.banks); }
 
   function slotOf(id) {
-    for (var b = 0; b < BANKS.length; b++) {
-      var i = state.banks[BANKS[b]].indexOf(id);
-      if (i >= 0) return { bank: BANKS[b], slot: i };
+    var letters = banksIn();
+    for (var b = 0; b < letters.length; b++) {
+      var i = state.banks[letters[b]].indexOf(id);
+      if (i >= 0) return { bank: letters[b], slot: i };
     }
     return null;
   }
 
   function padsOf(name) { return state.banks[name].map(function (id) { return id ? byId(id) : null; }); }
   function firstFree(name) { return state.banks[name].indexOf(null); }
-  function unplace(id) { BANKS.forEach(function (n) { var i = state.banks[n].indexOf(id); if (i >= 0) state.banks[n][i] = null; }); }
+  function unplace(id) { banksIn().forEach(function (n) { var i = state.banks[n].indexOf(id); if (i >= 0) state.banks[n][i] = null; }); }
   function bankUsed(name) { return state.banks[name].some(Boolean); }
 
   // ------------------------------------------------------------- recordings
@@ -620,7 +664,10 @@
   function renderBanks() {
     var bar = $("bank-bar");
     bar.replaceChildren();
-    BANKS.forEach(function (n) {
+    var letters = banksIn();
+    letters.forEach(function (n) {
+      var slot = document.createElement("span");
+      slot.className = "bank-slot";
       var b = document.createElement("button");
       b.type = "button";
       b.className = "bank-btn";
@@ -630,8 +677,55 @@
       if (bankUsed(n)) b.classList.add("used");
       b.addEventListener("click", function () { selectBank(n); });
       makeDropTarget(b, function (id) { dropOnBank(id, n); });
-      bar.appendChild(b);
+      slot.appendChild(b);
+      if (editing && letters.length > 1) {
+        var x = document.createElement("button");
+        x.type = "button";
+        x.className = "bank-remove";
+        x.textContent = "×";
+        x.title = "Remove pad bank " + n;
+        x.setAttribute("aria-label", "Remove pad bank " + n);
+        x.addEventListener("click", function (e) { e.stopPropagation(); removeBank(n); });
+        slot.appendChild(x);
+      }
+      bar.appendChild(slot);
     });
+    if (letters.length < MAX_BANKS) {
+      var add = document.createElement("button");
+      add.type = "button";
+      add.className = "bank-btn bank-add";
+      add.textContent = "+";
+      add.title = "Add pad bank " + ALL_BANKS[letters.length];
+      add.setAttribute("aria-label", "Add pad bank " + ALL_BANKS[letters.length]);
+      add.addEventListener("click", addBank);
+      bar.appendChild(add);
+    }
+  }
+
+  function addBank() {
+    var letters = banksIn();
+    if (letters.length >= MAX_BANKS) return;
+    var n = ALL_BANKS[letters.length];
+    state.banks[n] = new Array(PADS).fill(null);
+    state.settings.bank = n;
+    commit();
+    toast("Added pad bank " + n + ".");
+  }
+
+  function removeBank(n) {
+    var letters = banksIn();
+    if (letters.length < 2 || !state.banks[n]) return;
+    if (bankUsed(n) && !window.confirm("Remove pad bank " + n + "? Its comments stay in the reserve.")) return;
+    var keep = letters.filter(function (k) { return k !== n; });
+    var cur = bank(), banks = {};
+    keep.forEach(function (k, i) { banks[ALL_BANKS[i]] = state.banks[k]; });
+    // the later banks move up one letter, and so does the selection
+    var pos = cur === n ? Math.max(0, letters.indexOf(n) - 1) : keep.indexOf(cur);
+    state.banks = banks;
+    state.bankNames = {};
+    state.settings.bank = ALL_BANKS[pos];
+    commit();
+    toast("Removed pad bank " + n + (letters.indexOf(n) < letters.length - 1 ? "; the ones after it moved up a letter." : "."));
   }
 
   function render() {
@@ -640,7 +734,7 @@
     lib.replaceChildren();
     padsOf(bank()).forEach(function (c, i) { board.appendChild(c ? commentItem(c, i) : emptyItem(i)); });
     var placed = new Set();
-    BANKS.forEach(function (n) { state.banks[n].forEach(function (id) { if (id) placed.add(id); }); });
+    banksIn().forEach(function (n) { state.banks[n].forEach(function (id) { if (id) placed.add(id); }); });
     var reserve = state.comments.filter(function (c) { return !placed.has(c.id); });
     reserve.forEach(function (c) { lib.appendChild(commentItem(c, null)); });
     if (editing && !libWired) {
@@ -663,7 +757,6 @@
       lib.appendChild(li2);
     }
     renderBanks();
-    $("bank-label").textContent = "Pad bank " + bank();
     document.body.classList.toggle("editing", editing);
     fitPads(); // after the editing class, which changes the room inside the pads
     $("edit-toggle").setAttribute("aria-pressed", String(editing));
@@ -775,7 +868,7 @@
   }
 
   function selectBank(n) {
-    if (BANKS.indexOf(n) < 0 || n === bank()) return;
+    if (!state.banks[n] || n === bank()) return;
     state.settings.bank = n;
     commit();
   }
@@ -1463,9 +1556,9 @@
     var payload = {
       f: "dr", v: 1, n: state.name, l: state.lang,
       c: state.comments.map(function (c) { return [c.text, SEV_CODE.indexOf(c.severity), c.random ? 1 : 0]; }),
-      b: {}, bn: state.bankNames || {}
+      b: {}, bn: state.bankNames || {}, nb: banksIn().length
     };
-    BANKS.forEach(function (n) {
+    banksIn().forEach(function (n) {
       if (bankUsed(n)) payload.b[n] = state.banks[n].map(function (id) { return id ? index[id] : -1; });
     });
     var json = new TextEncoder().encode(JSON.stringify(payload));
@@ -1482,8 +1575,9 @@
       var o = JSON.parse(new TextDecoder().decode(bytes));
       if (!o || o.f !== "dr" || !Array.isArray(o.c)) throw new Error("not a board");
       var comments = o.c.map(function (c) { return { id: uid(), text: String(c[0] || ""), severity: SEV_CODE[c[1]] || "comment", random: c[2] !== 0 }; });
-      var banks = {};
-      BANKS.forEach(function (n) {
+      var banks = {}, last = (parseInt(o.nb, 10) || 0) - 1;
+      ALL_BANKS.forEach(function (n, k) { if (Array.isArray(o.b && o.b[n])) last = Math.max(last, k); });
+      ALL_BANKS.slice(0, Math.max(1, last + 1)).forEach(function (n) {
         banks[n] = (Array.isArray(o.b && o.b[n]) ? o.b[n] : []).slice(0, PADS).map(function (i) { return comments[i] ? comments[i].id : null; });
       });
       return sanitizeBoard({ name: o.n, lang: o.l, comments: comments, banks: banks, bankNames: o.bn, settings: state.settings });
@@ -1598,8 +1692,8 @@
     if (a.type === "stop") { stopAll(); return true; }
     if (a.type === "random") { playRandom(); return true; }
     if (a.type === "bank") {
-      var i = BANKS.indexOf(bank()) + a.step;
-      if (i >= 0 && i < BANKS.length) { selectBank(BANKS[i]); return true; }
+      var letters = banksIn(), i = letters.indexOf(bank()) + a.step;
+      if (i >= 0 && i < letters.length) { selectBank(letters[i]); return true; }
       return false;
     }
     if (a.type === "pad") {
@@ -1648,8 +1742,8 @@
 
   function boot() {
     renderMasthead();
+    if (presetUpgraded) save();
     if (upgradedPreset) {
-      save();
       setTimeout(function () { toast(filledBankB ? "New in this version: pad bank B, with harsher comments." : "New preset comments were added to your reserve."); }, 600);
     }
 
