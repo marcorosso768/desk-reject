@@ -13,7 +13,6 @@ window.DESK_REJECT_PRESETS = [
     id: "reviewer2-en",
     name: "Reviewer 2",
     // Pads fill bank A first, then B (16 each), in the order below.
-    bankNames: { A: "Reviewer 2", B: "Unleashed" },
     lang: "en",
     comments: [
       { text: "Why should I care?", severity: "comment", board: true },
@@ -33,7 +32,7 @@ window.DESK_REJECT_PRESETS = [
       { text: "Better suited for a field journal.", severity: "reject", board: true },
       { text: "Desk reject!", severity: "reject", board: true },
 
-      // bank B, "Unleashed"
+      // bank B: the harsher comments
       { text: "This paper answers a question nobody asked.", severity: "reject", board: true },
       { text: "The contribution is, at best, marginal.", severity: "reject", board: true },
       { text: "Your standard errors are a work of fiction.", severity: "revise", board: true },

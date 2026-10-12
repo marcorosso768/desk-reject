@@ -752,7 +752,7 @@ html.desktop-darwin .sheet { padding-top: 10px; }
   .report h2 { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
   .decision {
-    flex: 1 1 auto;
+    flex: 0 1 auto;
     min-height: 0;
     display: grid;
     grid-template-columns: auto minmax(0, 1fr);
@@ -760,9 +760,13 @@ html.desktop-darwin .sheet { padding-top: 10px; }
     justify-items: start;
     text-align: left;
     gap: clamp(12px, 3vw, 28px);
-    padding: 10px 0;
+    padding: clamp(10px, 2.2dvh, 22px) 0;
   }
   .stamp { --size: clamp(80px, 13dvh, 180px); }
+  /* masthead, stamp and pads stay together and the group is centred vertically,
+     so the masthead moves away from the top edge (blurred by iOS under the status bar) */
+  .sheet > :first-child { margin-top: auto; }
+  .legend { margin-bottom: auto !important; }
   .verdict-label { font-size: clamp(13px, 1.8dvh, 17px); margin-bottom: 2px; }
   .verdict-quote {
     min-height: 0;

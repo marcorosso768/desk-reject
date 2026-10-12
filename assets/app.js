@@ -29,7 +29,7 @@
   var PAD_LABELS = "1234QWERASDFZXCV".split("");
   var LONG_PRESS_MS = 550;
   // Revision of the built-in preset. Boards saved with an older one get the
-  // new preset comments added (see upgradeFromPreset); 2 = bank B "Unleashed".
+  // new preset comments added (see upgradeFromPreset); 2 = bank B with the harsher comments.
   var PRESET_REV = 2;
   // Where the code lives, for the "Source code" link when the page is served
   // from a custom domain (e.g. marcorosso.com/desk-reject/).
@@ -175,7 +175,7 @@
   // A board saved with an older preset keeps everything the user did, and gains
   // the comments added to the preset since: if bank B is still empty they fill
   // it as in the preset, otherwise they wait in the reserve.
-  var upgradedPreset = false;
+  var upgradedPreset = false, filledBankB = false;
   function upgradeFromPreset(b) {
     if (!PRESETS[0] || b.presetRev >= PRESET_REV) return b;
     var byText = new Map(b.comments.map(function (c) { return [c.text.trim().toLowerCase(), c]; }));
@@ -198,9 +198,8 @@
         filled += 1;
       }
     });
-    var names = PRESETS[0].bankNames || {};
-    if (!b.bankNames.A && names.A) b.bankNames.A = names.A;
-    if (!b.bankNames.B && names.B && b.banks.B.some(Boolean) && bEmpty) b.bankNames.B = names.B;
+    b.bankNames = {}; // banks are shown by letter only
+    filledBankB = filled > 0;
     b.presetRev = PRESET_REV;
     upgradedPreset = added > 0 || filled > 0;
     return b;
@@ -664,7 +663,7 @@
       lib.appendChild(li2);
     }
     renderBanks();
-    $("bank-label").textContent = "Bank " + bank() + (state.bankNames && state.bankNames[bank()] ? " · " + state.bankNames[bank()] : "");
+    $("bank-label").textContent = "Bank " + bank();
     document.body.classList.toggle("editing", editing);
     fitPads(); // after the editing class, which changes the room inside the pads
     $("edit-toggle").setAttribute("aria-pressed", String(editing));
@@ -1651,7 +1650,7 @@
     renderMasthead();
     if (upgradedPreset) {
       save();
-      setTimeout(function () { toast(state.banks.B.some(Boolean) && state.bankNames.B ? "New in this version: bank B, “" + state.bankNames.B + "”, with harsher comments." : "New preset comments were added to your reserve."); }, 600);
+      setTimeout(function () { toast(filledBankB ? "New in this version: bank B, with harsher comments." : "New preset comments were added to your reserve."); }, 600);
     }
 
     // On GitHub Pages (user.github.io/repo) point "Source code" at the repo;

@@ -21,7 +21,7 @@ On a Mac, open the dmg and drag Desk Reject onto Applications. The app is not si
 
 ## What it does
 
-- **Four banks of sixteen pads.** The board is a 4 × 4 grid of rubber pads, like a drum machine. Bank *A* (Reviewer 2) holds the classics ("Why should I care?", "Is this economics?", "Correlation is not causation."), bank *B* (Unleashed) the meaner ones, and *C*–*D* start empty. A pad lights up while it plays; a long comment gets a smaller font, never a bigger pad.
+- **Four banks of sixteen pads.** The board is a 4 × 4 grid of rubber pads, like a drum machine. Bank *A* holds the classics ("Why should I care?", "Is this economics?", "Correlation is not causation."), bank *B* the meaner ones, and *C*–*D* start empty. A pad lights up while it plays; a long comment gets a smaller font, never a bigger pad.
 - **Reviewer 2 decides.** The red stamp plays a random comment, never the same one twice in a row, from the pads and from a reserve of comments that sit on no pad.
 - **Referee report.** Every comment played is logged for the current manuscript. *Generate report* shows the list and the decision (accept, minor or major revision, reject, desk reject) and gives a one-page decision letter as a PDF, stamp included: *Download PDF* in the browser, *Save PDF* (with the usual Save dialog) in the desktop app. *Next round* keeps the manuscript and starts an empty round; *New manuscript* starts over.
 - **Your own board.** A blank pad with a **+** lets you write a new comment, record one with your own voice, or bring an existing one there. Under *Edit pads* you can edit, move and delete comments: drag a pad onto another to swap them, onto a bank button to move it to that bank, or onto the *Reserve* to take it off the grid.
