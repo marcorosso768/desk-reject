@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.2
+
+- Desktop: the app window (and the update and About windows) opens in the exact centre of the screen it is on, and shrinks to fit a small screen.
+
 ## 1.3.1
 
 - What's new: after an update, a short guided tour (spotlight and card, Back / Next / Skip) shows the new features once; a first visit gets a four-step welcome instead. See it again in *Settings → What's new* or, in the desktop app, *Help → What's New*. Any other key closes it, so it never gets in the way of a seminar.

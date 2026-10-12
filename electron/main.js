@@ -16,7 +16,7 @@
  */
 "use strict";
 
-const { app, BrowserWindow, Menu, nativeImage, nativeTheme, net, protocol, session, shell, dialog, ipcMain, systemPreferences, globalShortcut } = require("electron");
+const { app, BrowserWindow, Menu, nativeImage, nativeTheme, net, protocol, screen, session, shell, dialog, ipcMain, systemPreferences, globalShortcut } = require("electron");
 const path = require("node:path");
 const fs = require("node:fs");
 const { pathToFileURL } = require("node:url");
@@ -117,7 +117,7 @@ const UpdateUI = (() => {
   function open() {
     if (uw) { uw.show(); return; }
     uw = new BrowserWindow({
-      width: 480, height: 108, useContentSize: true,
+      ...centredBounds(480, 108), useContentSize: true,
       resizable: false, minimizable: false, maximizable: false, fullscreenable: false,
       title: "Updating Desk Reject",
       show: false,
@@ -406,7 +406,7 @@ let aboutWin = null;
 function showAbout() {
   if (aboutWin) { aboutWin.show(); aboutWin.focus(); return; }
   aboutWin = new BrowserWindow({
-    width: 760, height: 420, useContentSize: true,
+    ...centredBounds(760, 420), useContentSize: true,
     resizable: false, minimizable: false, maximizable: false, fullscreenable: false,
     title: "About Desk Reject",
     show: false,
@@ -450,10 +450,24 @@ function buildMenu() {
 
 // ----------------------------------------------------------------- window
 
+// Exact centre of the work area (screen minus menu bar and Dock) of the
+// display with the main window, or with the pointer at launch; the size
+// shrinks to fit a small screen. macOS's own "center" sits higher than the
+// middle, so the position is computed here.
+function centredBounds(width, height) {
+  let display;
+  try {
+    display = win && !win.isDestroyed() ? screen.getDisplayMatching(win.getBounds())
+                                        : screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+  } catch (_) { display = screen.getPrimaryDisplay(); }
+  const wa = display.workArea;
+  const w = Math.min(width, wa.width - 40), h = Math.min(height, wa.height - 40);
+  return { width: w, height: h, x: Math.round(wa.x + (wa.width - w) / 2), y: Math.round(wa.y + (wa.height - h) / 2) };
+}
+
 function createWindow() {
   win = new BrowserWindow({
-    width: 1280,
-    height: 820,
+    ...centredBounds(1280, 820),
     minWidth: 900,
     minHeight: 600,
     title: "Desk Reject",
