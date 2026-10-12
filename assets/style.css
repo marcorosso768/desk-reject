@@ -1035,3 +1035,9 @@ html.desktop-darwin .sheet { padding-top: 10px; }
 .update-banner-bar { height: 100%; width: 0%; background: var(--blue); border-radius: 3px; transition: width .25s ease; }
 .update-banner.indeterminate .update-banner-bar { width: 35% !important; animation: update-slide 1.2s ease-in-out infinite; }
 @keyframes update-slide { from { transform: translateX(-100%); } to { transform: translateX(300%); } }
+
+/* four masthead buttons on one line on a phone: they shrink rather than wrap */
+@media (orientation: portrait), (max-width: 639.98px) {
+  .masthead-actions { gap: clamp(5px, 1.6vw, 8px); flex-wrap: nowrap; }
+  .masthead .text-btn { white-space: nowrap; font-size: clamp(11px, 3.45vw, 15px); padding: 3px clamp(6px, 2.1vw, 11px); }
+}

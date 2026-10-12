@@ -1,5 +1,5 @@
 /* Offline cache for the app shell. Bump VERSION when any listed file changes. */
-const VERSION = "desk-reject-v29";
+const VERSION = "desk-reject-v30";
 const SHELL = [
   "./",
   "index.html",

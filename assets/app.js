@@ -482,6 +482,14 @@
     $("verdict-label").textContent = "Reviewer 2 writes:";
   }
 
+  function clearVerdict() {
+    var q = $("verdict-quote");
+    q.textContent = "";
+    delete q.dataset.sev;
+    q.classList.remove("typeset");
+    $("verdict-label").textContent = "Reviewer 2 is waiting for your paper.";
+  }
+
   function attachPadGestures(btn, onTap, onHold) {
     // Long press (touch) or right click opens the editor, so any pad can be
     // rewritten or recorded without entering edit mode.
@@ -1330,12 +1338,17 @@
       save(); renderMasthead(); renderReport();
       toast("Round " + state.session.round + " of " + state.session.ms + ".");
     });
-    $("report-new").addEventListener("click", function () {
-      if (state.session.log.length && !window.confirm("Start a new manuscript? The comments of this one are cleared.")) return;
+    // "New manuscript" in the report and "New review" in the masthead do the same
+    function newReview() {
+      if (state.session.log.length && !window.confirm("Start a new review? The comments of manuscript " + state.session.ms + " are cleared (generate the report first if you want it).")) return;
+      stopAll();
       state.session = newSession();
-      save(); renderMasthead(); renderReport();
+      save(); renderMasthead(); clearVerdict();
+      if (dlg.open) renderReport();
       toast("New manuscript " + state.session.ms + ".");
-    });
+    }
+    $("report-new").addEventListener("click", newReview);
+    $("review-new").addEventListener("click", newReview);
     $("report-pdf").addEventListener("click", function () {
       var btn = $("report-pdf");
       btn.disabled = true;
