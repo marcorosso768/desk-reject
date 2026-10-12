@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.2.3
+
+- macOS: the icon with the dark stamp in dark mode (fixed in 1.2.2) is confirmed in the Icon Composer file: the "Stamp" layer has only `image-name-specializations`.
+- macOS: after an update that changes the icon, Dock and Finder show the new one right away, without logging out (the app re-registers itself with Launch Services and restarts the Dock once, only when the icon has changed).
+
 ## 1.2.2
 
 - Pad banks: a new board starts with *A*–*D* (*C* and *D* empty); **+** adds up to *H*, and any bank can be removed under *Edit pads*. Boards trimmed to *A*–*B* by 1.2.0–1.2.1 get *C* and *D* back once.

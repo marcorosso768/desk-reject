@@ -356,6 +356,34 @@ function createWindow() {
 
 app.on("second-instance", () => { if (win) { if (win.isMinimized()) win.restore(); win.focus(); } });
 
+// After an update that changes the icon, Dock and Finder can keep showing the
+// old one until the user logs out. When the icon file in the bundle differs
+// from the one seen at the last launch, re-register the app with Launch
+// Services and restart the Dock once. Errors are ignored: never blocks startup.
+function refreshMacIconCacheIfChanged() {
+  try {
+    if (process.platform !== "darwin" || !app.isPackaged) return;
+    const bundle = path.dirname(path.dirname(path.dirname(process.execPath))); // X.app/Contents/MacOS/X
+    if (!bundle.endsWith(".app")) return;
+    const res = path.join(bundle, "Contents", "Resources");
+    const iconFile = ["Assets.car", "icon.icns"].map((f) => path.join(res, f)).find((f) => fs.existsSync(f));
+    if (!iconFile) return;
+    const stateFile = path.join(app.getPath("userData"), "icon-state.json");
+    let saved = {};
+    try { saved = JSON.parse(fs.readFileSync(stateFile, "utf8")) || {}; } catch (_) { /* first launch */ }
+    const iconHash = require("node:crypto").createHash("sha1").update(fs.readFileSync(iconFile)).digest("hex");
+    if (saved.iconHash === iconHash) return;
+    const { execFile } = require("node:child_process");
+    const lsregister = "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister";
+    execFile("/usr/bin/touch", [bundle], () => {
+      execFile(lsregister, ["-f", bundle], () => {
+        setTimeout(() => execFile("/usr/bin/killall", ["Dock"], () => {}), 1500);
+      });
+    });
+    try { fs.writeFileSync(stateFile, JSON.stringify({ iconHash, version: app.getVersion() })); } catch (_) { /* ignore */ }
+  } catch (_) { /* ignore */ }
+}
+
 app.whenReady().then(() => {
   // Serve the page and its assets from the app folder, refusing paths outside it.
   protocol.handle("app", (req) => {
@@ -390,6 +418,7 @@ app.whenReady().then(() => {
   nativeTheme.on("updated", applyTheme);
   buildMenu();
   createWindow();
+  refreshMacIconCacheIfChanged();
   setTimeout(() => checkForUpdates(false), 4000);
 
   app.on("activate", () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
