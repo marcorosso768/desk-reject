@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.1
+
+- What's new: after an update, a short guided tour (spotlight and card, Back / Next / Skip) shows the new features once; a first visit gets a four-step welcome instead. See it again in *Settings → What's new* or, in the desktop app, *Help → What's New*. Any other key closes it, so it never gets in the way of a seminar.
+
 ## 1.3.0
 
 - Desktop: updates in a small window of their own, Sparkle style: app icon, status ("Checking for updates…", download with megabytes and progress bar, "Verifying and extracting…"), **Cancel**, and **Install and Relaunch** / **Later** when ready. "You're up to date!" with **Version History**; "A new version is available" with the release notes, **Install Update**, **Remind Me Later**, **Skip This Version**. The progress banner at the bottom of the page is gone.

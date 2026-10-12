@@ -441,7 +441,8 @@ function buildMenu() {
     { label: "View", submenu: [{ role: "reload" }, { role: "toggleDevTools" }, { type: "separator" },
                                { role: "resetZoom" }, { role: "zoomIn" }, { role: "zoomOut" }, { type: "separator" }, { role: "togglefullscreen" }] },
     { role: "windowMenu" },
-    { role: "help", submenu: [...(mac ? [] : [{ label: "About Desk Reject", click: showAbout }]),
+    { role: "help", submenu: [{ label: "What's New", click: () => { if (win) win.webContents.send("dr:whats-new"); } },
+                               ...(mac ? [] : [{ label: "About Desk Reject", click: showAbout }]),
                                ...(repo ? [{ label: "Source Code", click: () => shell.openExternal("https://github.com/" + repo) }] : [])] }
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));

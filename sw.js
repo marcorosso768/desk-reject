@@ -1,5 +1,5 @@
 /* Offline cache for the app shell. Bump VERSION when any listed file changes. */
-const VERSION = "desk-reject-v32";
+const VERSION = "desk-reject-v33";
 const SHELL = [
   "./",
   "index.html",
@@ -7,6 +7,7 @@ const SHELL = [
   "assets/style.css",
   "assets/app.js",
   "assets/presets.js",
+  "assets/whatsnew.js",
   "assets/vendor/qrcode.js",
   "assets/vendor/jspdf.umd.min.js",
   "assets/fonts/pdf/cmu-serif-500-roman.ttf",

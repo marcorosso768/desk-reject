@@ -263,6 +263,8 @@
     try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch (e) { /* ignore */ }
   }
 
+  // a first visit (no saved board yet) gets the welcome tour instead of the news
+  var isNewInstall = (function () { try { return !localStorage.getItem(STORE_KEY); } catch (e) { return false; } })();
   var state = load();
   var recIds = new Set();
   var editing = false;
@@ -2038,6 +2040,136 @@
   // ------------------------------------------------------- update banner
   // Desktop app: a small card in the corner while an update downloads.
 
+  // ------------------------------------------------------------ what's new
+  // A guided tour shown once after an update (see assets/whatsnew.js): a
+  // spotlight on the element, a card with Back / Next / Skip. Any other key
+  // or a pad press closes it, so it never gets in the way of a seminar.
+
+  var Tour = (function () {
+    var DATA = window.DESK_REJECT_WHATSNEW || { welcome: [], releases: [] };
+    var SEEN_KEY = "desk-reject:seen-version";
+    var MAX_STEPS = 7;
+    var desktop = !!(window.deskReject && window.deskReject.desktop);
+    var latest = (DATA.releases[0] || {}).version || "0";
+    var steps = [], i = 0, root = null, spot = null, card = null;
+
+    function cmp(a, b) { return newerThan(a, b) ? 1 : newerThan(b, a) ? -1 : 0; }
+    function newerThan(a, b) {
+      var pa = String(a).split(".").map(Number), pb = String(b).split(".").map(Number);
+      for (var k = 0; k < 3; k++) { if ((pa[k] || 0) !== (pb[k] || 0)) return (pa[k] || 0) > (pb[k] || 0); }
+      return false;
+    }
+    function fits(s) { return s.desktop === undefined || s.desktop === desktop; }
+    function readSeen() { try { return localStorage.getItem(SEEN_KEY); } catch (e) { return null; } }
+    function markSeen() { try { localStorage.setItem(SEEN_KEY, latest); } catch (e) { /* ignore */ } }
+    // steps marked "last" go at the end; the tour stays short
+    function ordered(list) {
+      var main = list.filter(function (s) { return !s.last; }), tail = list.filter(function (s) { return s.last; });
+      return main.slice(0, MAX_STEPS - tail.length).concat(tail);
+    }
+    function stepsSince(seen) {
+      var out = [];
+      DATA.releases.forEach(function (r) { if (cmp(r.version, seen) > 0) r.steps.filter(fits).forEach(function (s) { out.push(s); }); });
+      return ordered(out);
+    }
+
+    function place() {
+      if (!root) return;
+      var s = steps[i];
+      var el = s.target ? document.querySelector(s.target) : null;
+      var r = el && el.getClientRects().length ? el.getBoundingClientRect() : null;
+      var vw = window.innerWidth, vh = window.innerHeight, pad = 8;
+      if (r) {
+        spot.hidden = false;
+        spot.style.left = (r.left - pad) + "px"; spot.style.top = (r.top - pad) + "px";
+        spot.style.width = (r.width + 2 * pad) + "px"; spot.style.height = (r.height + 2 * pad) + "px";
+        root.classList.remove("tour-centre");
+      } else {
+        spot.hidden = true;
+        root.classList.add("tour-centre");
+      }
+      card.querySelector(".tour-step").textContent = (i + 1) + " / " + steps.length;
+      card.querySelector(".tour-title").textContent = s.title;
+      card.querySelector(".tour-text").textContent = s.text;
+      card.querySelector(".tour-back").hidden = i === 0;
+      card.querySelector(".tour-next").textContent = i === steps.length - 1 ? "Done" : "Next";
+      // the card goes below the target if there is room, otherwise above, otherwise centred
+      var cw = Math.min(360, vw - 32), ch = card.offsetHeight || 170, left, top;
+      card.style.width = cw + "px";
+      if (r) {
+        left = Math.max(16, Math.min(vw - cw - 16, r.left + r.width / 2 - cw / 2));
+        if (r.bottom + pad + 14 + ch < vh - 12) top = r.bottom + pad + 14;
+        else if (r.top - pad - 14 - ch > 12) top = r.top - pad - 14 - ch;
+        else { top = (vh - ch) / 2; left = (vw - cw) / 2; }
+      } else { top = (vh - ch) / 2; left = (vw - cw) / 2; }
+      card.style.left = left + "px"; card.style.top = top + "px";
+      card.querySelector(".tour-next").focus({ preventScroll: true });
+    }
+
+    function onKey(e) {
+      if (!root) return;
+      if (e.key === "ArrowRight" || e.key === "Enter") { e.preventDefault(); e.stopImmediatePropagation(); go(1); }
+      else if (e.key === "ArrowLeft") { e.preventDefault(); e.stopImmediatePropagation(); go(-1); }
+      else if (e.key === "Tab" || /^(Shift|Control|Alt|Meta|CapsLock)$/.test(e.key)) { /* stay */ }
+      else close(); // Esc, or a pad key during a seminar: the tour gives way
+    }
+    function go(d) {
+      if (i + d >= steps.length) { close(); return; }
+      i = Math.max(0, i + d);
+      place();
+    }
+    function close() {
+      if (!root) return;
+      root.remove(); root = null;
+      window.removeEventListener("resize", place);
+      document.removeEventListener("keydown", onKey, true);
+      markSeen();
+    }
+
+    function start(list, heading) {
+      steps = (list || []).filter(fits);
+      if (!steps.length || root) return;
+      i = 0;
+      root = document.createElement("div");
+      root.className = "tour";
+      root.setAttribute("role", "dialog");
+      root.setAttribute("aria-modal", "true");
+      root.setAttribute("aria-label", heading);
+      spot = document.createElement("div"); spot.className = "tour-spot";
+      card = document.createElement("div"); card.className = "tour-card";
+      card.innerHTML = '<p class="tour-kicker"><span class="tour-head"></span><span class="tour-step"></span></p>'
+        + '<p class="tour-title"></p><p class="tour-text"></p>'
+        + '<div class="tour-actions"><button type="button" class="text-btn tour-skip">Skip tour</button><span class="spacer"></span>'
+        + '<button type="button" class="text-btn tour-back">Back</button><button type="button" class="ink-btn tour-next">Next</button></div>';
+      card.querySelector(".tour-head").textContent = heading;
+      card.querySelector(".tour-skip").addEventListener("click", close);
+      card.querySelector(".tour-back").addEventListener("click", function () { go(-1); });
+      card.querySelector(".tour-next").addEventListener("click", function () { go(1); });
+      root.append(spot, card);
+      document.body.appendChild(root);
+      window.addEventListener("resize", place);
+      document.addEventListener("keydown", onKey, true);
+      place();
+      requestAnimationFrame(place); // after the card has its real height
+    }
+
+    // At startup: a welcome for a new install, the news after an update, nothing otherwise.
+    function auto(isNewInstall) {
+      var seen = readSeen();
+      if (isNewInstall) { if (!seen) start(DATA.welcome, "Welcome to Desk Reject"); markSeen(); return; }
+      // boards from before the tour existed: show what came after 1.2.1
+      var list = stepsSince(seen || "1.2.1");
+      if (list.length) start(list, "What's new"); else markSeen();
+    }
+    // Help → What's New, or Settings → What's new: the latest releases again.
+    function again() {
+      var list = [];
+      DATA.releases.forEach(function (r) { r.steps.filter(fits).forEach(function (s) { list.push(s); }); });
+      start(ordered(list), "What's new");
+    }
+    return { auto: auto, again: again, isOpen: function () { return !!root; } };
+  })();
+
   // --------------------------------------------------------------- toasts
 
   var toastTimer = null;
@@ -2154,6 +2286,9 @@
       .catch(function () { render(); });
     render();
     checkSharedLink();
+    $("whats-new-btn").addEventListener("click", function () { $("settings").close(); Tour.again(); });
+    if (window.deskReject && window.deskReject.onWhatsNew) window.deskReject.onWhatsNew(function () { Tour.again(); });
+    setTimeout(function () { if (!document.querySelector("dialog[open]")) Tour.auto(isNewInstall); }, 1200);
     window.addEventListener("hashchange", checkSharedLink);
 
     if ("serviceWorker" in navigator && /^https?:$/.test(location.protocol)) {
