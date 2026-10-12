@@ -28,6 +28,9 @@
                    "KeyA", "KeyS", "KeyD", "KeyF", "KeyZ", "KeyX", "KeyC", "KeyV"];
   var PAD_LABELS = "1234QWERASDFZXCV".split("");
   var LONG_PRESS_MS = 550;
+  // Revision of the built-in preset. Boards saved with an older one get the
+  // new preset comments added (see upgradeFromPreset); 2 = bank B "Unleashed".
+  var PRESET_REV = 2;
   // Where the code lives, for the "Source code" link when the page is served
   // from a custom domain (e.g. marcorosso.com/desk-reject/).
   var HOME_REPO = "https://github.com/marcorosso768/desk-reject";
@@ -106,6 +109,7 @@
       comments: comments,
       banks: banksFromFlags(comments, preset.comments.map(function (c) { return c.board !== false; })),
       bankNames: sanitizeBankNames(preset.bankNames),
+      presetRev: PRESET_REV,
       session: newSession(),
       settings: defaultSettings()
     };
@@ -152,6 +156,7 @@
       comments: comments,
       banks: banks,
       bankNames: sanitizeBankNames(raw.bankNames),
+      presetRev: parseInt(raw.presetRev, 10) || 1,
       session: sanitizeSession(raw.session),
       settings: {
         voiceURI: typeof s.voiceURI === "string" ? s.voiceURI : null,
@@ -167,11 +172,45 @@
 
   function clamp(v, lo, hi) { return Math.min(hi, Math.max(lo, v)); }
 
+  // A board saved with an older preset keeps everything the user did, and gains
+  // the comments added to the preset since: if bank B is still empty they fill
+  // it as in the preset, otherwise they wait in the reserve.
+  var upgradedPreset = false;
+  function upgradeFromPreset(b) {
+    if (!PRESETS[0] || b.presetRev >= PRESET_REV) return b;
+    var byText = new Map(b.comments.map(function (c) { return [c.text.trim().toLowerCase(), c]; }));
+    var onPad = new Set();
+    BANKS.forEach(function (k) { b.banks[k].forEach(function (id) { if (id) onPad.add(id); }); });
+    var bEmpty = !b.banks.B.some(Boolean);
+    var pads = 0, added = 0, filled = 0;
+    PRESETS[0].comments.forEach(function (pc) {
+      var slot = pc.board !== false ? pads++ : -1; // position in the preset: 0-15 bank A, 16-31 bank B
+      var c = byText.get(pc.text.trim().toLowerCase());
+      if (!c) {
+        c = { id: uid(), text: pc.text, severity: pc.severity || "comment", random: pc.random !== false, voice: null };
+        b.comments.push(c);
+        added += 1;
+      }
+      // fill an empty bank B with the preset's bank B, reusing a comment already in the reserve
+      if (bEmpty && slot >= PADS && slot < 2 * PADS && !onPad.has(c.id)) {
+        b.banks.B[slot - PADS] = c.id;
+        onPad.add(c.id);
+        filled += 1;
+      }
+    });
+    var names = PRESETS[0].bankNames || {};
+    if (!b.bankNames.A && names.A) b.bankNames.A = names.A;
+    if (!b.bankNames.B && names.B && b.banks.B.some(Boolean) && bEmpty) b.bankNames.B = names.B;
+    b.presetRev = PRESET_REV;
+    upgradedPreset = added > 0 || filled > 0;
+    return b;
+  }
+
   function load() {
     try {
       var raw = JSON.parse(localStorage.getItem(STORE_KEY));
       var b = sanitizeBoard(raw);
-      if (b) return b;
+      if (b) return upgradeFromPreset(b);
     } catch (e) { /* private mode or corrupt: fall through */ }
     return fromPreset(PRESETS[0]);
   }
@@ -1126,6 +1165,7 @@
         return Promise.all(jobs);
       }).then(function () {
         b.session = state.session; // an imported board does not end the current manuscript
+        b.presetRev = PRESET_REV;  // and is taken as it is, without preset additions
         state = b;
         commit();
         toast("Imported “" + b.name + "” with " + b.comments.length + " comments.");
@@ -1460,6 +1500,7 @@
     var n = b.comments.length;
     if (!window.confirm("Load the shared board “" + b.name + "” with " + n + " comments? It replaces your current board. Recordings are not part of shared boards.")) return false;
     b.session = state.session;
+    b.presetRev = PRESET_REV;
     state = b;
     commit();
     toast("Loaded “" + b.name + "”.");
@@ -1608,6 +1649,10 @@
 
   function boot() {
     renderMasthead();
+    if (upgradedPreset) {
+      save();
+      setTimeout(function () { toast(state.banks.B.some(Boolean) && state.bankNames.B ? "New in this version: bank B, “" + state.bankNames.B + "”, with harsher comments." : "New preset comments were added to your reserve."); }, 600);
+    }
 
     // On GitHub Pages (user.github.io/repo) point "Source code" at the repo;
     // elsewhere drop the link rather than show a dead one.
