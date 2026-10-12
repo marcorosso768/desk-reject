@@ -980,3 +980,29 @@ html.desktop-darwin .sheet { padding-top: 10px; }
 /* [hidden] must win over the display rules of panels and fieldsets */
 [hidden] { display: none !important; }
 .chassis-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+
+/* ---------- update banner (desktop app) ---------- */
+
+.update-banner {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 50;
+  width: min(340px, calc(100vw - 32px));
+  padding: 10px 14px 12px;
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  background: var(--paper);
+  color: var(--ink);
+  box-shadow: var(--shadow);
+  font-size: 14px;
+}
+.update-banner-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.update-banner-row svg { flex: none; color: var(--blue); }
+#update-banner-text { flex: 1; min-width: 0; font-weight: 700; }
+.update-banner-pct { font-family: var(--tt); font-size: 12px; color: var(--ink-soft); margin-top: 6px; }
+.update-banner-pct:empty { display: none; }
+.update-banner-track { height: 5px; border-radius: 3px; background: var(--tint); overflow: hidden; }
+.update-banner-bar { height: 100%; width: 0%; background: var(--blue); border-radius: 3px; transition: width .25s ease; }
+.update-banner.indeterminate .update-banner-bar { width: 35% !important; animation: update-slide 1.2s ease-in-out infinite; }
+@keyframes update-slide { from { transform: translateX(-100%); } to { transform: translateX(300%); } }

@@ -104,6 +104,14 @@ function pickAsset(assets) {
 
 // Download with the progress shown on the Dock / taskbar icon, then open the
 // installer: on a Mac the dmg window, where the app is dragged onto Applications.
+// Progress for the page's update banner, and on the Dock / taskbar icon.
+function updateStatus(status) {
+  if (!win) return;
+  if (status.state === "progress") win.setProgressBar(status.total ? status.transferred / status.total : 2);
+  else if (status.state !== "downloading") win.setProgressBar(-1);
+  win.webContents.send("dr:update", status);
+}
+
 function downloadInstaller(asset, version) {
   if (!win) return;
   const ses = win.webContents.session;
@@ -112,10 +120,10 @@ function downloadInstaller(asset, version) {
     item.setSavePath(target);
     item.on("updated", () => {
       const total = item.getTotalBytes();
-      if (win && total) win.setProgressBar(item.getReceivedBytes() / total);
+      updateStatus({ state: "progress", version, transferred: item.getReceivedBytes(), total: total || asset.size || 0 });
     });
     item.once("done", async (_e2, state) => {
-      if (win) win.setProgressBar(-1);
+      updateStatus({ state: state === "completed" ? "ready" : "failed", version });
       if (state !== "completed") {
         dialog.showMessageBox(win, { type: "warning", message: "The download did not finish", detail: "Try again with Check for Updates…, or download it from the Releases page." });
         return;
@@ -129,6 +137,7 @@ function downloadInstaller(asset, version) {
       dialog.showMessageBox(win, { type: "info", message: "Desk Reject " + version + " downloaded", detail: how });
     });
   });
+  updateStatus({ state: "downloading", version });
   win.webContents.downloadURL(asset.browser_download_url);
 }
 
@@ -151,6 +160,7 @@ async function installMacUpdate(rel, repo, version) {
     if (!res.ok) throw new Error("latest-mac.yml: HTTP " + res.status);
     const info = macUpdater.parseLatestYml(await res.text());
     info.version = info.version || version;
+    updateStatus({ state: "downloading", version: info.version });
     const launch = await macUpdater.prepareUpdate({
       fetchImpl: (u) => net.fetch(u),
       repo,
@@ -158,9 +168,9 @@ async function installMacUpdate(rel, repo, version) {
       arch: macArch(),
       execPath: process.execPath,
       workRoot: updatesDir(),
-      onProgress: (p) => { if (win) win.setProgressBar(p.total ? p.transferred / p.total : 2); }
+      onProgress: (p) => updateStatus({ state: "progress", version: info.version, transferred: p.transferred, total: p.total })
     });
-    if (win) win.setProgressBar(-1);
+    updateStatus({ state: "ready", version: info.version });
     const { response } = await dialog.showMessageBox(win, {
       type: "info",
       buttons: ["Restart Now", "Later"],
@@ -172,7 +182,7 @@ async function installMacUpdate(rel, repo, version) {
     if (response === 0) { launch({ relaunch: true }); app.quit(); }
     else pendingMacInstaller = launch;
   } catch (err) {
-    if (win) win.setProgressBar(-1);
+    updateStatus({ state: "failed", version });
     // Could not update in place: fall back to downloading the dmg.
     const asset = pickAsset(rel.assets || []);
     await dialog.showMessageBox(win, {

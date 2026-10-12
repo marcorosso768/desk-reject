@@ -181,7 +181,12 @@ async function prepareUpdate({ fetchImpl, repo, info, arch, execPath, workRoot, 
   const workDir = fs.mkdtempSync(path.join(workRoot, 'work-'));
   try {
     const zipPath = path.join(workDir, 'update.zip');
-    await download(fetchImpl, assetUrl(repo, info.version, file.url), zipPath, file.sha512, onProgress);
+    // GitHub's storage does not always send a length: fall back to the size in latest-mac.yml.
+    const progress = onProgress && ((p) => {
+      const total = p.total || file.size || 0;
+      onProgress({ transferred: p.transferred, total, percent: total ? (p.transferred / total) * 100 : 0 });
+    });
+    await download(fetchImpl, assetUrl(repo, info.version, file.url), zipPath, file.sha512, progress);
 
     const unpackDir = path.join(workDir, 'app');
     fs.mkdirSync(unpackDir);

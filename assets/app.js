@@ -1510,6 +1510,36 @@
     });
   }
 
+  // ------------------------------------------------------- update banner
+  // Desktop app: a small card in the corner while an update downloads.
+
+  function wireUpdateBanner() {
+    var bridge = window.deskReject;
+    if (!bridge || !bridge.onUpdate) return;
+    var box = $("update-banner"), bar = $("update-banner-bar"), txt = $("update-banner-text"), pct = $("update-banner-pct");
+    var hideTimer = null;
+    var mb = function (n) { return (n / 1048576).toFixed(n > 104857600 ? 0 : 1) + " MB"; };
+    bridge.onUpdate(function (st) {
+      clearTimeout(hideTimer);
+      box.hidden = false;
+      box.classList.toggle("indeterminate", st.state === "downloading" || (st.state === "progress" && !st.total));
+      var v = st.version ? " " + st.version : "";
+      if (st.state === "downloading") { txt.textContent = "Downloading Desk Reject" + v + "…"; pct.textContent = ""; bar.style.width = "0%"; }
+      else if (st.state === "progress") {
+        var f = st.total ? Math.min(1, st.transferred / st.total) : 0;
+        txt.textContent = "Downloading Desk Reject" + v;
+        pct.textContent = st.total ? Math.round(f * 100) + "% · " + mb(st.transferred) + " of " + mb(st.total) : mb(st.transferred || 0);
+        bar.style.width = (f * 100) + "%";
+      } else if (st.state === "ready") {
+        txt.textContent = "Desk Reject" + v + " downloaded"; pct.textContent = ""; bar.style.width = "100%";
+        hideTimer = setTimeout(function () { box.hidden = true; }, 6000);
+      } else {
+        txt.textContent = "The update download failed"; pct.textContent = ""; bar.style.width = "0%";
+        hideTimer = setTimeout(function () { box.hidden = true; }, 6000);
+      }
+    });
+  }
+
   // --------------------------------------------------------------- toasts
 
   var toastTimer = null;
@@ -1609,6 +1639,7 @@
     wireSettings();
     wireReport();
     wireShare();
+    wireUpdateBanner();
     wireKeys();
 
     if (synth) {

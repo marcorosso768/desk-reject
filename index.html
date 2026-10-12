@@ -20,7 +20,7 @@
     <header class="masthead">
       <p class="ms-line"><span id="ms-number">Manuscript DR-2026-0000</span>, round <span id="ms-round">1</span></p>
       <div class="masthead-actions">
-        <button type="button" class="text-btn" id="report-open">Report</button>
+        <button type="button" class="text-btn" id="report-open">Generate report</button>
         <button type="button" class="text-btn" id="edit-toggle" aria-pressed="false">Edit pads</button>
         <button type="button" class="text-btn" id="settings-open">Settings</button>
       </div>
@@ -272,6 +272,14 @@
     </form>
   </dialog>
 
+  <div class="update-banner" id="update-banner" role="status" aria-live="polite" hidden>
+    <div class="update-banner-row">
+      <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"><path d="M12 4v11m0 0l-4.5-4.5M12 15l4.5-4.5M5 19h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span id="update-banner-text">Downloading update…</span>
+    </div>
+    <div class="update-banner-track"><div class="update-banner-bar" id="update-banner-bar"></div></div>
+    <div class="update-banner-pct" id="update-banner-pct"></div>
+  </div>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
   <script src="assets/vendor/qrcode.js"></script>
