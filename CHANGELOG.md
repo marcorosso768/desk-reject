@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.3.5
+
+- Referee report: the decision letter no longer lists the comments in the order they were played. It contains Reviewer 2's report, in prose: each comment once (with how many times it was made), grouped from minor comments to major concerns to fundamental problems. The report window shows the same list, without repetitions.
+- The authors' reply no longer opens with "Dear Reviewer 2," (its first sentence already addresses the referee); one closing line rewritten to be clearer; "Why not use machine learning?" and similar comments are answered as a method question.
+
 ## 1.3.4
 
 - Referee report: the authors' reply is now a single letter instead of a list. It is built from the comments played: an opening, one paragraph per theme the referee touched (identification, contribution, literature, statistics, presentation, verdict) quoting the comments and answering them, one or two ironic comparisons, and a closing that follows the decision. Drawn at random every time.

@@ -1387,10 +1387,10 @@
     $("report-note").textContent = d.note;
     var list = $("report-list");
     list.replaceChildren();
-    s.log.forEach(function (e) {
+    Report.unique(s.log).forEach(function (e) {
       var li = document.createElement("li");
       li.className = "sev-" + e.severity;
-      li.textContent = e.text;
+      li.textContent = e.text + (e.n > 1 ? " \u00D7" + e.n : "");
       list.appendChild(li);
     });
     $("report-pdf").disabled = !d.n;
@@ -1535,25 +1535,25 @@
       y += 6;
 
       para("Dear Author(s),", 11.5, "normal", INK, 2);
-      para("Thank you for presenting your work. Reviewer 2 has now read the manuscript (or at least the abstract) and raised "
-        + d.n + " comment" + (d.n > 1 ? "s" : "") + " during the seminar. They are reproduced below in the order in which they were made.", 11.5, "normal", INK, 6);
+      para("Thank you for presenting your work. Reviewer 2 has now read the manuscript (or at least the abstract) and made "
+        + d.n + " comment" + (d.n > 1 ? "s" : "") + " during the seminar. The report follows.", 11.5, "normal", INK, 6);
 
-      // the comments
-      s.log.forEach(function (e, i) {
-        font("CMUSerif", "normal", 11.5);
-        var lines = doc.splitTextToSize(e.text, R - X - 32);
-        var need = lines.length * 5.6 + 1.5;
-        if (y + need > H - M - 10) { doc.addPage(); y = M; }
-        font("CMUType", "normal", 10, SOFT);
-        doc.text((i + 1) + ".", X + 7, y, { align: "right" });
-        font("CMUSerif", "normal", 11.5);
-        doc.text(lines, X + 10, y);
-        font("CMUSans", "bold", 7.5, SEVCOL[e.severity] || GREY);
-        doc.setCharSpace(0.4);
-        doc.text(SEV_LABEL[e.severity].toUpperCase(), R, y, { align: "right" });
+      // the report, in Reviewer 2's voice: each comment once, from minor to fatal
+      var rep = Report.build(s.log);
+      font("CMUSerif", "bold", 13);
+      doc.text("Report of Reviewer 2", X, y);
+      y += 7;
+      para(rep.opening, 11.5, "normal", INK, 4);
+      rep.sections.forEach(function (sec) {
+        if (y > H - M - 30) { doc.addPage(); y = M; }
+        font("CMUSans", "bold", 8, SEVCOL[sec.severity] || GREY);
+        doc.setCharSpace(0.6);
+        doc.text(sec.title.toUpperCase(), X, y);
         doc.setCharSpace(0);
-        y += need + 2.2;
+        y += 5;
+        para(sec.text, 11.5, "normal", INK, 4);
       });
+      para(rep.closing, 11.5, "italic", INK, 2);
 
       // decision and stamp
       if (y > H - M - 75) { doc.addPage(); y = M; }
@@ -1589,7 +1589,6 @@
         font("CMUSerif", "bold", 19);
         doc.text("Response to Reviewer 2", X, y);
         y += 10;
-        para("Dear Reviewer 2,", 11.5, "normal", INK, 2);
         Responses.letter(s.log, d.label).forEach(function (p) { para(p, 11.5, "normal", INK, 3.5); });
         if (y > H - M - 30) { doc.addPage(); y = M; }
         y += 2;
@@ -1788,6 +1787,97 @@
   // ------------------------------------------------------------ response to the referee
   // A random, sarcastic reply for each comment; the pools follow the comment's type.
 
+  // ------------------------------------------------------------ the referee report
+  // The decision letter is written as a report in Reviewer 2's own voice:
+  // the comments of the round, each once (with how often it was made), from
+  // the minor ones to the reasons for rejection, joined into prose.
+
+  var Report = (function () {
+    var ORDER = ["comment", "revise", "reject"];
+    var OPENINGS = [
+      "The paper addresses a question. I have read it, or at least enough of it to form an opinion, and my opinion follows, in increasing order of severity.",
+      "I was asked to review this manuscript and, against my better judgement, I did. My comments are below, from the merely irritating to the fatal.",
+      "The authors have clearly worked hard on this paper. Unfortunately, effort is not identification. I list my concerns from the least to the most serious.",
+      "This is a paper. Beyond that, I have some reservations, which I set out below, starting with the small ones so that the authors can warm up."
+    ];
+    var SECTIONS = {
+      comment: { title: "Minor comments", intro: [
+        "Let me begin with some minor points.",
+        "Before turning to the serious problems, a few minor remarks.",
+        "Some smaller issues first."] },
+      revise: { title: "Major concerns", intro: [
+        "My main concerns are about the empirical strategy.",
+        "The analysis raises several serious concerns.",
+        "I now turn to the substance, such as it is."] },
+      reject: { title: "Fundamental problems", intro: [
+        "More fundamentally, the paper has problems that no revision can fix.",
+        "Finally, and most importantly:",
+        "I come now to the reasons why this paper cannot be published, here or anywhere."] }
+    };
+    var REPEATS = [
+      "I made this point {n} during the seminar, and I will not apologise for the repetition.",
+      "I raised this {n} during the seminar; the authors did not seem to hear.",
+      "(Raised {n} during the seminar, for emphasis.)",
+      "I said this {n}, and I would say it again."
+    ];
+    var CLOSINGS = [
+      "I hope these comments will be useful to the authors, in this or in another career.",
+      "I wish the authors the best of luck with this paper, which they will need.",
+      "I look forward to reading the next version, or rather to being asked to."
+    ];
+    var CONNECT = ["First,", "Second,", "Third,"];
+    var MORE = ["Moreover,", "In addition,", "Also,", "Furthermore,", "What is more,", "On top of this,", "Not to mention that", "Let me add that", "Equally worrying,", "Besides,"];
+
+    function pick(a) { return a[Math.floor(Math.random() * a.length)]; }
+    function lowerFirst(t) { return /^(I\b|I'|[A-Z]{2})/.test(t) ? t : t.charAt(0).toLowerCase() + t.slice(1); }
+    function sentence(t) { return /[.!?]$/.test(t) ? t : t + "."; }
+
+    // log -> [{ title, text }] paragraphs, plus an opening and a closing
+    function build(log) {
+      var seen = {}, list = [];
+      log.forEach(function (e) {
+        var k = e.text.trim().toLowerCase();
+        if (seen[k]) { seen[k].n += 1; return; }
+        seen[k] = { text: e.text.trim(), severity: ORDER.indexOf(e.severity) >= 0 ? e.severity : "comment", n: 1 };
+        list.push(seen[k]);
+      });
+      var out = { opening: pick(OPENINGS), sections: [], closing: pick(CLOSINGS) };
+      var repeats = [];  // each "I said this n times" line once per report
+      function repeatLine(n) {
+        if (!repeats.length) repeats = REPEATS.slice();
+        var line = repeats.splice(Math.floor(Math.random() * repeats.length), 1)[0];
+        return line.replace("{n}", n === 2 ? "twice" : n === 3 ? "three times" : n + " times");
+      }
+      ORDER.forEach(function (sev) {
+        var items = list.filter(function (c) { return c.severity === sev; });
+        if (!items.length) return;
+        var parts = [pick(SECTIONS[sev].intro)];
+        var more = MORE.slice();
+        items.forEach(function (c, i) {
+          var conn = items.length === 1 ? "" : (i === items.length - 1 && i > 1 ? "Finally," : i < CONNECT.length ? CONNECT[i]
+            : (more.length ? more : (more = MORE.slice())).splice(Math.floor(Math.random() * more.length), 1)[0]);
+          var s = (conn ? conn + " " + lowerFirst(c.text) : c.text);
+          s = sentence(s);
+          if (c.n > 1) s += " " + repeatLine(c.n);
+          parts.push(s);
+        });
+        out.sections.push({ title: SECTIONS[sev].title, text: parts.join(" "), severity: sev });
+      });
+      return out;
+    }
+    // the same list, for the report dialog: each comment once, minor to red, with counts
+    function unique(log) {
+      var items = [], seen = {};
+      log.forEach(function (e) {
+        var k = e.text.trim().toLowerCase();
+        if (seen[k]) { seen[k].n++; return; }
+        seen[k] = { text: e.text, severity: e.severity, n: 1 }; items.push(seen[k]);
+      });
+      return items.sort(function (a, c) { return ORDER.indexOf(a.severity) - ORDER.indexOf(c.severity); });
+    }
+    return { build: build, unique: unique };
+  })();
+
   var Responses = (function () {
     // The authors' reply, written as one letter: an opening, one paragraph for
     // each theme the referee touched (quoting the comments), a comparison or
@@ -1808,7 +1898,7 @@
           "Parallel trends hold. We checked them in levels, in logs and, at the referee's implicit request, in a mirror.",
           "We appreciate the reminder that correlation is not causation. We would add that a referee report is not a review."
         ] },
-      { key: "contribution", re: /care|contribution|interest|question|learn|audience|footnote|nobody asked|marginal|overpromis|field journal|different field|well known|surpris|descriptive|is this economics/i,
+      { key: "contribution", re: /care|contribution|interest|question|what we learn|audience|footnote|nobody asked|marginal|overpromis|field journal|different field|well known|surpris|descriptive|is this economics/i,
         lead: [
           "The referee questions the contribution of the paper: {q}.",
           "On the motivation, the referee asks: {q}.",
@@ -1830,7 +1920,7 @@
           "We were unable to locate the referee's student's 2014 paper, but we have cited it anyway, as is customary.",
           "The literature review has grown from one page to six. It is now the most rigorous part of the report, ours included."
         ] },
-      { key: "statistics", re: /standard error|significan|robust|sample|p-hack|statistic|specification|clustered|power/i,
+      { key: "statistics", re: /standard error|significan|robust|sample|p-hack|statistic|specification|clustered|power|machine learning/i,
         lead: [
           "On the statistics, the referee observes: {q}.",
           "The referee is worried about inference: {q}."
@@ -1915,7 +2005,7 @@
     var CLOSINGS = {
       bad: [
         "In light of the above, we have decided to submit the paper elsewhere, where we hope it will be read by someone who has read it.",
-        "We accept the decision with the serenity of authors who have seen worse, and the confidence of authors who will see this referee again.",
+        "We accept the decision with the serenity of authors who have seen worse, and the quiet satisfaction of knowing that, one day, the referee's own paper will land on our desk.",
         "We thank the editor for the opportunity to learn, once again, that peer review is a random variable with a fat left tail."
       ],
       revise: [
@@ -1932,6 +2022,7 @@
     // Replies to specific comments (the preset ones and their usual variants);
     // a comment with no specific reply gets a generic line for its theme.
     var SPECIFIC = [
+      [/machine learning/i, ["We tried machine learning, as suggested. The machine learned that the referee was wrong, and we report its findings in the appendix."]],
       [/why should i care/i, ["Why anyone should care is a question that has troubled philosophers for millennia; we are flattered that the referee expects us to settle it in the introduction, and we have tried."]],
       [/is this economics/i, ["We have added a paragraph explaining why this is economics. It is two pages long and cites Adam Smith, which we expect will settle the matter."]],
       [/what is the contribution/i, ["The contribution is now stated three times on page one, in bold, and once more in the conclusion for readers who start from the end, as the referee evidently did."]],
