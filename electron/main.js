@@ -134,12 +134,12 @@ const UpdateUI = (() => {
     uw.loadURL(ORIGIN + "/electron/update-window.html");
   }
   // st: { title, detail?, progress (0-1, or null = indeterminate), transferred?, total?, cancel?, primary?, secondary? }
-  let size = [480, 108];
+  let size = [600, 112];
   function set(st, handler) {
     state = st;
     if (handler !== undefined) onAction = handler;
     // the offer of a new version is taller (notes and three buttons) than the progress view
-    const want = st.size || [480, 108];
+    const want = st.size || [600, 112];
     if (uw && (want[0] !== size[0] || want[1] !== size[1])) {
       const b = centredBounds(want[0], want[1]);
       uw.setContentSize(b.width, b.height);
@@ -268,8 +268,9 @@ async function installMacUpdate(rel, repo, version) {
     });
     if (cancelled) return;
     // Ready: Install and Relaunch now, or Later (installed when the app quits).
-    UpdateUI.set({ title: "Ready to install Desk Reject " + info.version, progress: 1,
-                   detail: "Or later, when you quit.", primary: "Install and Relaunch", secondary: "Later" }, (action) => {
+    UpdateUI.set({ offer: true, size: [600, 150], title: "Desk Reject " + info.version + " is ready",
+                   subtitle: "Restart to finish the update. If you choose Later, it will be installed when you quit.",
+                   primary: "Restart Now", secondary: "Later" }, (action) => {
       if (action === "primary") { UpdateUI.close(); launch({ relaunch: true }); app.quit(); }
       else { pendingMacInstaller = launch; UpdateUI.close(); }
     });
@@ -300,13 +301,11 @@ function releaseNotes(rel) {
 }
 
 // What's new, for the update window: the CHANGELOG.md bullets of every version
-// after the installed one, shortened to their first sentence.
+// after the installed one, as plain text (the box scrolls).
 async function changelogNotes(repo, latest, current, signal) {
   const clean = (t) => {
-    t = t.replace(/^\s*[-*]\s+/, "").replace(/\*\*|`/g, "").replace(/\*([^*]+)\*/g, "$1").replace(/\s*\([^)]*\)/g, "").trim();
-    const m = /^(.{20,}?[.:;])\s/.exec(t + " ");
-    if (m && m[1].length < t.length) t = m[1].replace(/[:;]$/, ".");
-    return t.length > 95 ? t.slice(0, 92).replace(/\s+\S*$/, "") + "\u2026" : t;
+    t = t.replace(/^\s*[-*]\s+/, "").replace(/\*\*|`/g, "").replace(/\*([^*]+)\*/g, "$1").trim();
+    return t;
   };
   try {
     const res = await net.fetch("https://raw.githubusercontent.com/" + repo + "/v" + latest + "/CHANGELOG.md", { signal });
@@ -318,7 +317,7 @@ async function changelogNotes(repo, latest, current, signal) {
       if (h) { take = newer(h[1], current) && !newer(h[1], latest); return; }
       if (take && /^\s*[-*]\s+/.test(line)) out.push(clean(line));
     });
-    return out.slice(0, 8);
+    return out.slice(0, 12);
   } catch (_) { return []; }
 }
 
@@ -366,12 +365,12 @@ async function checkForUpdates(manual) {
     const response = await new Promise((resolve) => {
       UpdateUI.open();
       UpdateUI.set({
-        offer: true, size: [560, notes.length ? 230 + Math.min(notes.length, 6) * 22 : 170],
+        offer: true, size: [600, notes.length ? 360 : 170],
         title: "Desk Reject " + latest + " is available",
         subtitle: "You have version " + current + ". Would you like to install it now?",
         notes,
         tertiary: "Skip This Version", secondary: "Later",
-        primary: selfInstall ? "Install" : "Download"
+        primary: selfInstall ? "Install Update" : "Download Update"
       }, (action) => resolve(action));
     });
     if (response === "primary") {

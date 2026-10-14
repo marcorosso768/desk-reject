@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.8
+
+- Update windows reworked. "Update available" lists the full changes and offers Install Update; "ready" says Restart Now or Later, without a progress bar; larger buttons.
+
 ## 1.3.6
 
 - New "update available" window. It shows what is new, read from this changelog, with Skip This Version, Later and Install.
