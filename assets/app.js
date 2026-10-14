@@ -2072,7 +2072,11 @@
       [/footnote/i, ["We tried to turn the paper into a footnote, but the footnote asked for its own appendix."]],
       [/prove anything/i, ["With this sample one can indeed prove anything, which is why we were careful to prove only one thing."]],
       [/decorative/i, ["The theory section is no longer decorative: it is now load-bearing, and a structural engineer has signed it off."]],
-      [/different field/i, ["We did consider moving to a different field. Unfortunately, this referee reviews for their journals too."]],
+      [/different field/i, [
+        "We are touched by the referee's concern for our career. Having read the report, we feel we should return the favour: has the referee considered a different field?",
+        "We did consider a different field, but we concluded that one of us working in the wrong field was enough.",
+        "A different field is an excellent suggestion, and we pass it on to the referee, with our compliments."
+      ]],
       [/do not resubmit/i, ["We will not resubmit. We will submit, which is different."]],
       [/however/i, ["We thank the referee for the \u201Cinteresting\u201D, and we have learned to fear the \u201Chowever\u201D."]],
       [/what we learn/i, ["What we learn is now stated in a box at the top of page 1, with an arrow pointing at it."]],
