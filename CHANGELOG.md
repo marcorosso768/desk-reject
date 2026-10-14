@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.4
+
+- Referee report: the authors' reply is now a single letter instead of a list. It is built from the comments played: an opening, one paragraph per theme the referee touched (identification, contribution, literature, statistics, presentation, verdict) quoting the comments and answering them, one or two ironic comparisons, and a closing that follows the decision. Drawn at random every time.
+
 ## 1.3.3
 
 - Two-finger swipe on a trackpad: works anywhere in the window, in both directions, and a second swipe right after the first is no longer swallowed by the inertia of the previous one.

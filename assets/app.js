@@ -1572,34 +1572,28 @@
       para("on behalf of the Editor", 10.5, "normal", SOFT, 0);
       drawStamp(doc, R - 24, ySign + 16, 21, RED); // beside the signature, below the text
 
-      // the authors' reply: one sarcastic response per comment
+      // the authors' reply: one letter, built from the comments of the round
       if (state.settings.responses && s.log.length) {
         doc.addPage(); y = M;
+        font("CMUSans", "bold", 9, SOFT);
+        doc.setCharSpace(0.8);
+        doc.text("THE DESK REJECT REVIEW", X, y);
+        doc.setCharSpace(0);
+        font("CMUSerif", "italic", 9.5, SOFT);
+        doc.text("Manuscript " + s.ms + ", round " + s.round, R, y, { align: "right" });
+        y += 3;
+        doc.setDrawColor.apply(doc, [211, 214, 219]);
+        doc.setLineWidth(0.3);
+        doc.line(X, y, R, y);
+        y += 12;
         font("CMUSerif", "bold", 19);
         doc.text("Response to Reviewer 2", X, y);
-        y += 9;
-        para("We thank Reviewer 2 for the careful reading of our manuscript and for the constructive comments, which have greatly improved the paper. Below we respond to each comment in turn. The referee's comments are in italics.", 11.5, "normal", INK, 6);
-        var replies = Responses.pick(s.log);
-        s.log.forEach(function (e, i) {
-          font("CMUSerif", "italic", 11.5);
-          var q = doc.splitTextToSize(e.text, R - X - 10);
-          font("CMUSerif", "normal", 11.5);
-          var a = doc.splitTextToSize(replies[i], R - X - 10);
-          var need = (q.length + a.length) * 5.6 + 6;
-          if (y + need > H - M - 10) { doc.addPage(); y = M; }
-          font("CMUType", "normal", 10, SOFT);
-          doc.text((i + 1) + ".", X + 7, y, { align: "right" });
-          font("CMUSerif", "italic", 11.5, SOFT);
-          doc.text(q, X + 10, y);
-          y += q.length * 5.6 + 1;
-          font("CMUSerif", "normal", 11.5);
-          doc.text(a, X + 10, y);
-          y += a.length * 5.6 + 5;
-        });
+        y += 10;
+        para("Dear Reviewer 2,", 11.5, "normal", INK, 2);
+        Responses.letter(s.log, d.label).forEach(function (p) { para(p, 11.5, "normal", INK, 3.5); });
         if (y > H - M - 30) { doc.addPage(); y = M; }
-        y += 3;
-        para("We hope that the revised version is now suitable for publication, and we look forward to the next round.", 11.5, "normal", INK, 4);
-        para("Sincerely,", 11.5, "normal", INK, 1);
+        y += 2;
+        para("Yours, with all the respect we could find,", 11.5, "normal", INK, 1);
         para(s.presenter ? s.presenter : "The Authors", 11.5, "italic", INK, 0);
       }
 
@@ -1795,59 +1789,245 @@
   // A random, sarcastic reply for each comment; the pools follow the comment's type.
 
   var Responses = (function () {
-    var POOLS = {
-      any: [
-        "We thank the referee for this insightful comment. We have added 47 robustness checks to the appendix, which now runs to 212 pages.",
-        "We are grateful for this suggestion, which we now address in footnote 38.",
-        "We agree with the referee and have rewritten the paper accordingly. It is now a different paper.",
-        "This is an excellent point. We now cite the referee's work three times.",
-        "We have thought about this comment very carefully, for several months, mostly at night.",
-        "We respectfully disagree, but we have made the change anyway.",
-        "Following the referee's advice, we now control for everything.",
-        "We thank the referee for reading the paper, which we take as a compliment.",
-        "As suggested, this result has been moved to the online appendix, where it will be safe.",
-        "We share the referee's concern. So did our coauthor, who has since left academia.",
-        "This point is now discussed at length in a new section, which the referee is welcome to skip.",
-        "We have addressed this comment in full. We kindly ask the referee not to check.",
-        "We are confident that this comment was meant constructively, and we have treated it as such."
-      ],
-      comment: [
-        "We have clarified the motivation in the introduction, now in bold.",
-        "We were also surprised that this was not surprising.",
-        "We have made the contribution clearer by repeating it in every paragraph.",
-        "The audience for this paper is now explicitly stated: it is the referee.",
-        "We now explain what we learn from this, in a box at the top of page 1."
+    // The authors' reply, written as one letter: an opening, one paragraph for
+    // each theme the referee touched (quoting the comments), a comparison or
+    // two, and a closing that follows the decision. Every line is drawn at
+    // random, so no two letters are the same.
+
+    var THEMES = [
+      { key: "identification", re: /endogene|causa|parallel trend|first stage|instrument|placebo|fixed effect|fishing|identif|pre-?trend|callaway|sant'anna|diff-in-diff|exogen/i,
+        lead: [
+          "On identification, the referee writes: {q}.",
+          "The referee's main concern is identification: {q}.",
+          "Turning to the empirical strategy, the referee objects: {q}."
+        ],
+        body: [
+          "We have now instrumented the instrument, controlled for the controls and clustered the clusters. The coefficient survives, as coefficients tend to do when the authors are motivated.",
+          "Following the referee, we re-estimated everything with every estimator published since 2018. All of them agree, except the one the referee prefers, which we have moved to a footnote out of respect.",
+          "We note that the referee raises endogeneity in the same tone other people use to say “bless you”: by reflex, and without waiting for an answer.",
+          "Parallel trends hold. We checked them in levels, in logs and, at the referee's implicit request, in a mirror.",
+          "We appreciate the reminder that correlation is not causation. We would add that a referee report is not a review."
+        ] },
+      { key: "contribution", re: /care|contribution|interest|question|learn|audience|footnote|nobody asked|marginal|overpromis|field journal|different field|well known|surpris|descriptive|is this economics/i,
+        lead: [
+          "The referee questions the contribution of the paper: {q}.",
+          "On the motivation, the referee asks: {q}.",
+          "The referee is not persuaded that the paper matters: {q}."
+        ],
+        body: [
+          "The question of why anyone should care has troubled philosophers for millennia. We are flattered that the referee expects us to settle it in the introduction, and we have tried.",
+          "The contribution is now stated three times on page one, in bold, and once more in the conclusion for readers who start from the end, as the referee evidently did.",
+          "We agree that the paper answers a question nobody asked. So, in fairness, did the referee's report.",
+          "We have added a paragraph explaining why this is economics. It is two pages long and cites Adam Smith, which we expect will settle the matter."
+        ] },
+      { key: "literature", re: /cite|literature|my student|well known|unaware|known result|already been done/i,
+        lead: [
+          "The referee points us to the literature: {q}.",
+          "On related work, the referee notes: {q}."
+        ],
+        body: [
+          "We now cite the referee's work four times, including the working paper that does not exist yet but surely will.",
+          "We were unable to locate the referee's student's 2014 paper, but we have cited it anyway, as is customary.",
+          "The literature review has grown from one page to six. It is now the most rigorous part of the report, ours included."
+        ] },
+      { key: "statistics", re: /standard error|significan|robust|sample|p-hack|statistic|specification|clustered|power/i,
+        lead: [
+          "On the statistics, the referee observes: {q}.",
+          "The referee is worried about inference: {q}."
+        ],
+        body: [
+          "The appendix now reports 1,024 specifications. The result holds in 1,023 of them; the remaining one is the referee's favourite, and it does not converge.",
+          "Our standard errors are now clustered at the level of the individual, the household, the municipality and the referee's mood.",
+          "We have added the requested robustness check, and then another one, just in case the referee changes their mind between rounds."
+        ] },
+      { key: "presentation", re: /figure|abstract|appendix|theory section|decorative|writing|clarity|title/i,
+        lead: [
+          "On the presentation, the referee remarks: {q}.",
+          "The referee comments on the exposition: {q}."
+        ],
+        body: [
+          "We have rewritten the abstract so that it promises less. It now promises nothing, which we understand to be the referee's standard.",
+          "The theory section is no longer decorative: it is now load-bearing, and we have asked a structural engineer to sign it off.",
+          "The figures remain beautiful. We decided that one beautiful thing per report was not too much to ask."
+        ] },
+      { key: "verdict", re: /reject|desk|not convinced|resubmit|why should|not of general/i,
+        lead: [
+          "Finally, the referee concludes: {q}.",
+          "The referee's verdict is unambiguous: {q}."
+        ],
+        body: [
+          "We respect the referee's conviction, which seems to have been reached well before the paper was opened.",
+          "We are grateful for the clarity. Few people manage to be wrong so concisely.",
+          "We have taken the verdict to heart, and the paper to a better journal."
+        ] }
+    ];
+
+    var OPENINGS = [
+      "We thank Reviewer 2 for the report, which we have read twice: once to understand it, and once to make sure there was nothing to understand.",
+      "We are grateful to Reviewer 2 for the time devoted to our manuscript. Judging from the report, it was about four minutes, and we appreciate every one of them.",
+      "We thank the referee for a report that is short, confident and, in places, about our paper.",
+      "We were delighted to receive Reviewer 2's comments, which have improved the paper in ways the referee will not notice, since the referee will not read it again.",
+      "Reviewer 2 raises several points. We address each of them below, in the order in which they were shouted."
+    ];
+
+    // Comparisons: most are general; the topical ones (one subject, taken
+    // seriously) come up in about one letter in five, never more than one.
+    var COMPARISONS = [
+      "Reading this report was less productive than explaining democracy to a fascist.",
+      "Reading this report was about as rewarding as explaining parallel trends to a flat-earther.",
+      "We have learned more from arguing with a parking meter.",
+      "After this report, we doubt the referee could review a Mickey Mouse comic without asking for an instrument.",
+      "Engaging with these comments felt like running a country on a horoscope: confident, detailed, and unrelated to the evidence.",
+      "We have had more constructive exchanges with the airport self-check-in machine.",
+      "Taking this report seriously would be like letting the man who believes in a strong leader explain checks and balances.",
+      "The report has the internal consistency of a conspiracy theory and roughly the same relationship with the data.",
+      "We read the report as one reads a horoscope: carefully, and without changing anything.",
+      "This was the most confident set of claims we have seen since a politician promised to make the trains run on time.",
+      "Reading this report was like asking a cat for directions: the answer came quickly and with total conviction, and it was wrong.",
+      "The report has the depth of a puddle and the self-confidence of an ocean.",
+      "We have received more careful feedback from a fortune cookie, and the fortune cookie at least came with a snack.",
+      "The referee engages with the paper the way a tourist engages with a cathedral: a photograph of the entrance, and off to lunch.",
+      "This report is to peer review what instant coffee is to coffee.",
+      "Reading these comments was like watching someone review a restaurant from the car park.",
+      "The referee's confidence is inversely proportional to the number of pages read, which our estimates put at two.",
+      "We have seen more rigorous identification strategies in a horoscope column, and the horoscope had a control group: the other eleven signs.",
+      "The report would make an excellent placebo: it has no effect, and everyone can tell.",
+      "We are told that a monkey at a typewriter will eventually write Shakespeare. We now know what the earlier drafts look like.",
+      "Reading this report felt like a seminar question that begins with \u201CThis is more of a comment than a question\u201D and lasts for four pages.",
+      "The referee has the rare gift of being wrong with footnotes.",
+      "We admire a report that manages to be both vague and rude, a combination usually reserved for airline customer service.",
+      "We have had more productive conversations with a printer that was out of toner.",
+      "If confidence were a contribution, this report would be in a top-five journal.",
+      "This is the first report we have read that would fail its own robustness checks.",
+      "The referee's comments have the statistical power of a sample of one, which, on reflection, they are."
+    ];
+    var TOPICAL = [
+      "The report is about as respectful of the evidence as a settlement is of international law.",
+      "Asked to engage with our main result, the referee replied by asking us to define \u201Ceffect\u201D. We recognise the technique: when the evidence is unbearable, ask for a definition.",
+      "The report dismisses our estimates the way some governments dismiss UN findings: unread, and with total confidence.",
+      "Reviewer 2 treats our results the way some governments treat satellite images: as a matter of opinion.",
+      "The referee disputes our numbers with a familiar method: first keep out the journalists who could count, then call the count unverified.",
+      "The referee's standard of proof is the one usually reserved for war crimes: impossible to meet, by design.",
+      "Every point we made was met with \u201Cit's complicated\u201D, a phrase we have learned to recognise from people who know exactly how simple it is."
+    ];
+    var TOPICAL_SHARE = 0.2;
+
+    var CLOSINGS = {
+      bad: [
+        "In light of the above, we have decided to submit the paper elsewhere, where we hope it will be read by someone who has read it.",
+        "We accept the decision with the serenity of authors who have seen worse, and the confidence of authors who will see this referee again.",
+        "We thank the editor for the opportunity to learn, once again, that peer review is a random variable with a fat left tail."
       ],
       revise: [
-        "We now cluster the standard errors at every level we could think of. The results survive at the 10% level, on Tuesdays.",
-        "We have run the suggested test. It is significant, which we find encouraging.",
-        "We added an event study. The pre-trends are flat if one squints.",
-        "We now instrument the instrument.",
-        "We re-estimated the model with Callaway and Sant'Anna, de Chaisemartin and D'Haultfoeuille, Sun and Abraham, and our horoscope. All four agree.",
-        "A new appendix table reports 1,024 specifications. We show the best one in the main text.",
-        "We have added the requested robustness check, and then another one, just in case.",
-        "The first stage is now stronger, thanks to a more motivated research assistant."
+        "We hope that the revised version, now 40 pages longer, meets the referee's expectations, or at least exhausts them.",
+        "We look forward to the next round, and to the new concerns the referee will have about the parts that did not change."
       ],
-      reject: [
-        "We thank the referee for the opportunity to submit this paper to a different journal.",
-        "We have taken this comment to heart, and to a field journal.",
-        "We are pleased that the referee read beyond the abstract this time.",
-        "We have resubmitted elsewhere, and we hope the referee was not assigned again.",
-        "We understand the referee's position and have forwarded it to our department chair.",
-        "We accept the referee's verdict with the serenity of authors who have seen worse."
+      good: [
+        "We are moved by the referee's acceptance, which we attribute to fatigue, and we will not question it.",
+        "We thank the referee for being, on this occasion, Reviewer 1."
       ]
     };
-    function shuffle(a) { for (var i = a.length - 1; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)); var t = a[i]; a[i] = a[j]; a[j] = t; } return a; }
-    // one reply per comment, without repeats until the pools run out
-    function pick(log) {
-      var bags = {};
-      return log.map(function (e) {
-        var sev = POOLS[e.severity] ? e.severity : "comment";
-        if (!bags[sev] || !bags[sev].length) bags[sev] = shuffle(POOLS[sev].concat(POOLS.any.filter(function () { return Math.random() < 0.6; })));
-        return bags[sev].pop();
-      });
+
+    function pick(a) { return a[Math.floor(Math.random() * a.length)]; }
+    // Replies to specific comments (the preset ones and their usual variants);
+    // a comment with no specific reply gets a generic line for its theme.
+    var SPECIFIC = [
+      [/why should i care/i, ["Why anyone should care is a question that has troubled philosophers for millennia; we are flattered that the referee expects us to settle it in the introduction, and we have tried."]],
+      [/is this economics/i, ["We have added a paragraph explaining why this is economics. It is two pages long and cites Adam Smith, which we expect will settle the matter."]],
+      [/what is the contribution/i, ["The contribution is now stated three times on page one, in bold, and once more in the conclusion for readers who start from the end, as the referee evidently did."]],
+      [/cite my paper/i, ["We now cite the referee's work four times, including the working paper that does not exist yet but surely will."]],
+      [/^endogeneity/i, ["We note that the referee raises endogeneity the way other people say \u201Cbless you\u201D: by reflex, and without waiting for an answer."]],
+      [/correlation is not causation/i, ["We appreciate the reminder that correlation is not causation, and we would add that a referee report is not a review."]],
+      [/parallel trends/i, ["Parallel trends hold: we checked them in levels, in logs and, at the referee's implicit request, in a mirror."]],
+      [/callaway/i, ["We re-estimated everything with every estimator published since 2018. All of them agree, except the one the referee prefers, which we have moved to a footnote out of respect."]],
+      [/first stage/i, ["The first stage is now stronger, thanks to a more motivated research assistant."]],
+      [/robustness check/i, ["We have added the requested robustness check, and then another one, in case the referee changes their mind between rounds."]],
+      [/my student/i, ["We could not find the referee's student's 2014 paper, but we have cited it anyway, as is customary."]],
+      [/economically irrelevant/i, ["We have converted the coefficient into euros, dollars and cups of coffee. In cups of coffee it is enormous."]],
+      [/finish the abstract/i, ["We have shortened the abstract to two lines, in the hope that the referee reaches the end this time."]],
+      [/general interest/i, ["The paper is of general interest: both our mothers have read it."]],
+      [/field journal/i, ["We agree that it would suit a field journal; unfortunately, the field journals agree with the referee about us."]],
+      [/desk reject/i, ["We respect the referee's conviction, which seems to have been reached well before the paper was opened."]],
+      [/nobody asked/i, ["We agree that the paper answers a question nobody asked. So, in fairness, did the referee's report."]],
+      [/marginal/i, ["We have made the contribution less marginal by moving it to the centre of the page."]],
+      [/standard errors/i, ["Our standard errors are now clustered at the level of the individual, the household, the municipality and the referee's mood."]],
+      [/p-hacking/i, ["We deny any p-hacking. We did try 1,024 specifications, and we report the best one with the pride of honest people."]],
+      [/placebo/i, ["The placebo is significant because the placebo, too, responds to incentives."]],
+      [/not convinced/i, ["We understand that the referee cannot be convinced, so we have written this reply for the editor."]],
+      [/figures are beautiful/i, ["The figures remain beautiful: one beautiful thing per paper did not seem too much to ask."]],
+      [/keep the appendix/i, ["We followed this suggestion: the appendix is now the paper, and the paper is now the appendix."]],
+      [/fishing expedition/i, ["It was indeed a fishing expedition, and we are pleased to report that we caught something."]],
+      [/overpromises/i, ["We have rewritten the abstract so that it promises less. It now promises nothing, which we understand to be the referee's standard."]],
+      [/pity about the question/i, ["We have changed the question. The data kindly agreed to stay."]],
+      [/footnote/i, ["We tried to turn the paper into a footnote, but the footnote asked for its own appendix."]],
+      [/prove anything/i, ["With this sample one can indeed prove anything, which is why we were careful to prove only one thing."]],
+      [/decorative/i, ["The theory section is no longer decorative: it is now load-bearing, and a structural engineer has signed it off."]],
+      [/different field/i, ["We considered a different field, but they had already received a report from the referee."]],
+      [/do not resubmit/i, ["We will not resubmit. We will submit, which is different."]],
+      [/however/i, ["We thank the referee for the \u201Cinteresting\u201D, and we have learned to fear the \u201Chowever\u201D."]],
+      [/what we learn/i, ["What we learn is now stated in a box at the top of page 1, with an arrow pointing at it."]],
+      [/well known/i, ["If the result is well known, we would be grateful for the reference, which the referee forgot to include."]],
+      [/audience/i, ["The audience for this paper is now explicitly stated: it is the referee."]],
+      [/unaware of the literature/i, ["The literature review has grown from one page to six, and is now the most rigorous part of the exchange, the report included."]],
+      [/not surprising/i, ["We are sorry the result did not surprise the referee. We were surprised that it did not."]],
+      [/descriptive/i, ["We take \u201Cdescriptive\u201D as a compliment: at least the referee agrees that we described something."]]
+    ];
+    function specific(text) {
+      for (var i = 0; i < SPECIFIC.length; i++) if (SPECIFIC[i][0].test(text)) return pick(SPECIFIC[i][1]);
+      return null;
     }
-    return { pick: pick };
+
+    // a comparison that stands on its own gets a short lead-in
+    var LEADINS = ["In all honesty,", "To put things in perspective,", "We will be frank:", "If we may,"];
+    function standalone(c) {
+      // a lead-in only where it reads well ("If we may, reading this report…")
+      return /^(Reading|Taking|Engaging|This was|This is|We have|We read|We admire)/.test(c) ? pick(LEADINS) + " " + c.charAt(0).toLowerCase() + c.slice(1) : c;
+    }
+
+    function pickN(a, n) {
+      var c = a.slice(), out = [];
+      while (c.length && out.length < n) out.push(c.splice(Math.floor(Math.random() * c.length), 1)[0]);
+      return out;
+    }
+    function quote(texts) {
+      var q = texts.slice(0, 2).map(function (t) { return "“" + t.replace(/[.!?]+$/, "") + "”"; });
+      return q.length > 1 ? q[0] + " and, later, " + q[1] : q[0];
+    }
+
+    // log: the comments played; decision: the label from decide()
+    function letter(log, decision) {
+      var groups = {}, order = [];
+      log.forEach(function (e) {
+        var th = THEMES.filter(function (t) { return t.re.test(e.text); })[0];
+        var k = th ? th.key : null;
+        if (!k) return;
+        if (!groups[k]) { groups[k] = []; order.push(k); }
+        if (groups[k].indexOf(e.text) < 0) groups[k].push(e.text);
+      });
+      // the themes most insisted upon first, the verdict always last; at most four
+      var keys = order.filter(function (k) { return k !== "verdict"; })
+        .sort(function (a, b) { return groups[b].length - groups[a].length; }).slice(0, groups.verdict ? 3 : 4);
+      if (groups.verdict) keys.push("verdict");
+
+      var paras = [pick(OPENINGS)];
+      var cmp = pickN(COMPARISONS, log.length > 6 ? 2 : 1);
+      if (Math.random() < TOPICAL_SHARE) cmp[cmp.length - 1] = pick(TOPICAL); // one topical line at most
+      keys.forEach(function (k, i) {
+        var th = THEMES.filter(function (t) { return t.key === k; })[0];
+        var quoted = groups[k].slice(0, 2);
+        var replies = quoted.map(specific).filter(Boolean);
+        if (replies.length < 2) replies = replies.concat(pickN(th.body.filter(function (b) { return replies.indexOf(b) < 0; }), 2 - replies.length));
+        var p = pick(th.lead).replace("{q}", quote(quoted)) + " " + replies.join(" ");
+        if (i === 1 && cmp.length) p += " " + cmp.shift(); // a comparison inside the argument
+        paras.push(p);
+      });
+      if (!keys.length) paras.push("The referee's comments resist classification, and indeed comprehension. We have nonetheless addressed all of them.");
+      cmp.forEach(function (c) { paras.push(standalone(c)); });
+      var tone = /reject/i.test(decision) ? "bad" : /major/i.test(decision) ? "revise" : /accept|minor/i.test(decision) ? "good" : "revise";
+      paras.push(pick(CLOSINGS[tone]));
+      return paras;
+    }
+    return { letter: letter };
   })();
 
   // ------------------------------------------------------------ statistics
