@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.3
+
+- Two-finger swipe on a trackpad: works anywhere in the window, in both directions, and a second swipe right after the first is no longer swallowed by the inertia of the previous one.
+
 ## 1.3.2
 
 - Desktop: the app window (and the update and About windows) opens in the exact centre of the screen it is on, and shrinks to fit a small screen.

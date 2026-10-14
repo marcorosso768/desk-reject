@@ -518,18 +518,31 @@
       board.classList.add(ok ? (step > 0 ? "swipe-next" : "swipe-prev") : "swipe-edge");
     }
     // Two-finger swipe on a trackpad arrives as horizontal wheel events, with
-    // inertia: one gesture moves one bank, then waits for the wheel to settle.
-    var acc = 0, locked = false, quiet = null;
-    board.parentNode.addEventListener("wheel", function (e) {
-      if (e.ctrlKey || Math.abs(e.deltaX) <= Math.abs(e.deltaY)) return;
+    // inertia. It works anywhere in the window (not only over the pads), and
+    // one gesture moves one bank. While the inertia of a swipe is still
+    // arriving, a new swipe is recognised when the direction flips (inertia
+    // never reverses) or when the deltas grow again after fading.
+    var acc = 0, locked = 0, quiet = null, trough = Infinity;
+    window.addEventListener("wheel", function (e) {
+      if (e.ctrlKey || Math.abs(e.deltaX) <= Math.abs(e.deltaY) * 1.2) return;
+      if (document.querySelector("dialog[open]") || (typeof Tour !== "undefined" && Tour.isOpen())) return;
       e.preventDefault(); // no back / forward page swipe in the browser
+      var dx = e.deltaMode === 1 ? e.deltaX * 16 : e.deltaX, dir = dx > 0 ? 1 : -1, abs = Math.abs(dx);
       clearTimeout(quiet);
-      quiet = setTimeout(function () { acc = 0; locked = false; }, 220);
-      if (locked) return;
-      acc += e.deltaX;
-      if (Math.abs(acc) < 60) return;
-      locked = true;
-      bankSwipe(acc > 0 ? 1 : -1);
+      quiet = setTimeout(function () { acc = 0; locked = 0; trough = Infinity; }, 160);
+      if (locked) {
+        var reversed = dir !== locked && abs > 3;
+        var renewed = dir === locked && trough < 6 && abs > Math.max(10, trough * 3);
+        trough = Math.min(trough, abs);
+        if (!reversed && !renewed) return;
+        locked = 0; acc = 0;
+      }
+      if (acc && (acc > 0) !== (dx > 0)) acc = 0; // a change of mind restarts the count
+      acc += dx;
+      if (Math.abs(acc) < 40) return;
+      locked = acc > 0 ? 1 : -1;
+      acc = 0; trough = Infinity;
+      bankSwipe(locked);
     }, { passive: false });
     board.addEventListener("animationend", function () { board.classList.remove("swipe-next", "swipe-prev", "swipe-edge"); });
   }
