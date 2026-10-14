@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.3.6
+
+- New "update available" window. It shows what is new, read from this changelog, with Skip This Version, Later and Install.
+- Referee report: the comments are written as Reviewer 2's thoughts while reading the paper ("Looking at Table 2, my first reaction was: ..."), with a different lead-in for each and varied wording for comments made more than once; no more references to the seminar in the report.
+- Authors' reply: the "different field" answer rewritten to be clearer.
+- The report's Download PDF / Save PDF button has the same size as the buttons next to it.
+
 ## 1.3.5
 
 - Referee report: the decision letter no longer lists the comments in the order they were played. It contains Reviewer 2's report, in prose: each comment once (with how many times it was made), grouped from minor comments to major concerns to fundamental problems. The report window shows the same list, without repetitions.

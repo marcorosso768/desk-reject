@@ -1,10 +1,10 @@
 :root {
   color-scheme: light dark;
-  --bg: #ececec; --ink: #1d1d1f; --soft: #6e6e73; --track: rgba(0, 0, 0, .1);
+  --bg: #ececec; --ink: #1d1d1f; --soft: #6e6e73; --track: rgba(0, 0, 0, .1); --box: #fff; --box-border: rgba(0, 0, 0, .1);
   --accent: #3478f6; --btn: #fff; --btn-border: rgba(0, 0, 0, .14);
 }
 @media (prefers-color-scheme: dark) {
-  :root { --bg: #2a2a2c; --ink: #f2f2f7; --soft: #a1a1a6; --track: rgba(255, 255, 255, .14); --btn: #5a5a5e; --btn-border: rgba(255, 255, 255, .08); }
+  :root { --bg: #2a2a2c; --ink: #f2f2f7; --soft: #a1a1a6; --track: rgba(255, 255, 255, .14); --btn: #5a5a5e; --btn-border: rgba(255, 255, 255, .08); --box: #1e1e20; --box-border: rgba(255, 255, 255, .1); }
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); overflow: hidden; -webkit-user-select: none; user-select: none; }
@@ -29,3 +29,17 @@ button.default { background: var(--accent); border-color: var(--accent); color: 
 button:active { filter: brightness(.92); }
 button[hidden] { display: none; }
 body.win .upd, body.linux .upd { padding: 16px 18px 14px; }
+
+/* "A new version is available": subtitle, release notes, three buttons */
+.subtitle { margin: -4px 0 12px; color: var(--soft); }
+.notes {
+  margin: 0 0 14px; padding: 10px 14px 10px 30px; max-height: 170px; overflow-y: auto;
+  background: var(--box); border: 1px solid var(--box-border); border-radius: 8px;
+  -webkit-user-select: text; user-select: text;
+}
+.notes li { margin: 2px 0; }
+.offer .track, .offer .detail { display: none; }
+.offer .icon img { width: 72px; height: 72px; }
+.offer .title { font-size: 15px; white-space: normal; }
+.offer .foot { margin-top: 0; }
+.offer .buttons { margin-left: auto; }

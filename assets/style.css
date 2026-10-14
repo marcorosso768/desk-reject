@@ -1139,3 +1139,13 @@ html, body { overscroll-behavior-x: none; }
 .tour-actions .spacer { flex: 1; }
 .tour-actions .text-btn, .tour-actions .ink-btn { font-size: 14px; }
 @media (prefers-reduced-motion: reduce) { .tour-spot, .tour-card { transition: none; } }
+
+/* the report's Download / Save PDF button: same size as New manuscript and Next round */
+.report-panel .panel-actions .ink-btn {
+  padding: 4px 12px;
+  border: 1px solid var(--ink);
+  border-radius: 6px;
+  font-size: 15px;
+  line-height: 1.4;
+}
+.report-panel .panel-actions .ink-btn:hover { border-color: var(--blue); }

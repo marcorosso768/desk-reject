@@ -117,7 +117,7 @@ const UpdateUI = (() => {
   function open() {
     if (uw) { uw.show(); return; }
     uw = new BrowserWindow({
-      ...centredBounds(480, 108), useContentSize: true,
+      ...centredBounds(size[0], size[1]), useContentSize: true,
       resizable: false, minimizable: false, maximizable: false, fullscreenable: false,
       title: "Updating Desk Reject",
       show: false,
@@ -134,9 +134,19 @@ const UpdateUI = (() => {
     uw.loadURL(ORIGIN + "/electron/update-window.html");
   }
   // st: { title, detail?, progress (0-1, or null = indeterminate), transferred?, total?, cancel?, primary?, secondary? }
+  let size = [480, 108];
   function set(st, handler) {
     state = st;
     if (handler !== undefined) onAction = handler;
+    // the offer of a new version is taller (notes and three buttons) than the progress view
+    const want = st.size || [480, 108];
+    if (uw && (want[0] !== size[0] || want[1] !== size[1])) {
+      const b = centredBounds(want[0], want[1]);
+      uw.setContentSize(b.width, b.height);
+      const [w, h] = uw.getSize(), wa = screen.getDisplayMatching(uw.getBounds()).workArea;
+      uw.setPosition(Math.round(wa.x + (wa.width - w) / 2), Math.round(wa.y + (wa.height - h) / 2));
+    }
+    size = want;
     if (uw && !uw.webContents.isLoading()) uw.webContents.send("upd:state", st);
     if (win) {
       if (typeof st.progress === "number") win.setProgressBar(st.progress);
@@ -289,6 +299,29 @@ function releaseNotes(rel) {
   return body.length > 600 ? body.slice(0, 600).replace(/\s+\S*$/, "") + "…" : body;
 }
 
+// What's new, for the update window: the CHANGELOG.md bullets of every version
+// after the installed one, shortened to their first sentence.
+async function changelogNotes(repo, latest, current, signal) {
+  const clean = (t) => {
+    t = t.replace(/^\s*[-*]\s+/, "").replace(/\*\*|`/g, "").replace(/\*([^*]+)\*/g, "$1").replace(/\s*\([^)]*\)/g, "").trim();
+    const m = /^(.{20,}?[.:;])\s/.exec(t + " ");
+    if (m && m[1].length < t.length) t = m[1].replace(/[:;]$/, ".");
+    return t.length > 95 ? t.slice(0, 92).replace(/\s+\S*$/, "") + "\u2026" : t;
+  };
+  try {
+    const res = await net.fetch("https://raw.githubusercontent.com/" + repo + "/v" + latest + "/CHANGELOG.md", { signal });
+    if (!res.ok) return [];
+    const out = [];
+    let take = false;
+    (await res.text()).split("\n").forEach((line) => {
+      const h = /^##\s+v?(\d+\.\d+\.\d+)/.exec(line);
+      if (h) { take = newer(h[1], current) && !newer(h[1], latest); return; }
+      if (take && /^\s*[-*]\s+/.test(line)) out.push(clean(line));
+    });
+    return out.slice(0, 8);
+  } catch (_) { return []; }
+}
+
 let checking = false;
 async function checkForUpdates(manual) {
   if (checking) { if (manual && UpdateUI.isOpen()) UpdateUI.open(); return; }
@@ -317,34 +350,42 @@ async function checkForUpdates(manual) {
     const latest = String(rel.tag_name || "").replace(/^v/, "");
     const current = app.getVersion();
     const prefs = readPrefs();
-    UpdateUI.close();
     if (!newer(latest, current)) {
+      UpdateUI.close();
       if (manual) await upToDate(repo, current);
       return;
     }
+    // "Skip This Version": the check at startup stays silent about that version;
+    // Check for Updates… still offers it, and a newer version is offered again
     if (!manual && prefs.skip === latest) return;
     const selfInstall = canSelfInstall();
-    const notes = releaseNotes(rel);
-    const { response } = await dialog.showMessageBox(win, {
-      type: "info",
-      buttons: [selfInstall ? "Install Update" : "Download Update", "Remind Me Later", "Skip This Version"],
-      defaultId: 0,
-      cancelId: 1,
-      message: "A new version of Desk Reject is available!",
-      detail: "Desk Reject " + latest + " is now available (you have " + current + "). " + (selfInstall
-        ? "It is downloaded and checked, then Desk Reject restarts with the new version."
-        : "The installer is downloaded to your Downloads folder and opened for you.")
-        + (notes ? "\n\n" + notes : "")
+    let notes = await changelogNotes(repo, latest, current, abort.signal);
+    if (cancelled) return;
+    if (!notes.length) notes = releaseNotes(rel).split("\n").map((l) => l.replace(/^\s*[-*]\s+/, "").trim()).filter(Boolean).slice(0, 8);
+    // "A new version is available": in the update window, Sparkle style
+    const response = await new Promise((resolve) => {
+      UpdateUI.open();
+      UpdateUI.set({
+        offer: true, size: [560, notes.length ? 230 + Math.min(notes.length, 6) * 22 : 170],
+        title: "Desk Reject " + latest + " is available",
+        subtitle: "You have version " + current + ". Would you like to install it now?",
+        notes,
+        tertiary: "Skip This Version", secondary: "Later",
+        primary: selfInstall ? "Install" : "Download"
+      }, (action) => resolve(action));
     });
-    if (response === 0) {
-      if (selfInstall) installMacUpdate(rel, repo, latest);
+    if (response === "primary") {
+      if (selfInstall) installMacUpdate(rel, repo, latest); // the window switches to the download
       else {
+        UpdateUI.close();
         const asset = pickAsset(rel.assets || []);
         if (asset) downloadInstaller(asset, latest);
         else shell.openExternal(releasesURL(repo, rel)); // nothing for this system yet
       }
+    } else {
+      UpdateUI.close();
+      if (response === "tertiary") writePrefs(Object.assign(prefs, { skip: latest }));
     }
-    if (response === 2) writePrefs(Object.assign(prefs, { skip: latest }));
   } catch (e) {
     if (cancelled || (e && e.name === "AbortError")) return;
     if (manual) await failed("Could not check for updates", e.message || e);

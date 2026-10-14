@@ -1361,7 +1361,7 @@
     log.forEach(function (e) { count[e.severity] = (count[e.severity] || 0) + 1; });
     var d;
     if (n < 3) d = { label: "Accept", note: "Reviewer 2 fell asleep before reaching the third comment." };
-    else if (log.some(function (e) { return /desk reject/i.test(e.text); })) d = { label: "Desk reject", note: "The manuscript was desk rejected during the seminar. The editor did not object." };
+    else if (log.some(function (e) { return /desk reject/i.test(e.text); })) d = { label: "Desk reject", note: "The manuscript was desk rejected before the end of the first page. The editor did not object." };
     else if (count.reject * 3 >= n) d = { label: "Reject", note: "At least a third of the comments call for rejection. The editor follows Reviewer 2, as always." };
     else if (count.revise >= count.comment) d = { label: "Major revision", note: "The concerns are mostly about identification. Please address every comment; Reviewer 2 will check." };
     else d = { label: "Minor revision", note: "Reviewer 2 is almost satisfied, which has never happened before." };
@@ -1535,8 +1535,8 @@
       y += 6;
 
       para("Dear Author(s),", 11.5, "normal", INK, 2);
-      para("Thank you for presenting your work. Reviewer 2 has now read the manuscript (or at least the abstract) and made "
-        + d.n + " comment" + (d.n > 1 ? "s" : "") + " during the seminar. The report follows.", 11.5, "normal", INK, 6);
+      para("Thank you for your submission. Reviewer 2 has now read the manuscript (or at least the abstract) and noted down "
+        + d.n + " thought" + (d.n > 1 ? "s" : "") + " while reading it. The report follows.", 11.5, "normal", INK, 6);
 
       // the report, in Reviewer 2's voice: each comment once, from minor to fatal
       var rep = Report.build(s.log);
@@ -1802,31 +1802,49 @@
     ];
     var SECTIONS = {
       comment: { title: "Minor comments", intro: [
-        "Let me begin with some minor points.",
-        "Before turning to the serious problems, a few minor remarks.",
-        "Some smaller issues first."] },
+        "Let me begin with the small things.",
+        "Before the serious problems, a few minor remarks.",
+        "Some smaller issues first."],
+        // where the reader was when the thought came: one per comment, never repeated
+        where: [
+          "On the first page, I wondered:", "Reading the introduction, I asked myself:", "In the margin of page 3, I wrote:",
+          "A small note to self, early on:", "Glancing at the figures, I thought:", "Somewhere in the literature review, I jotted down:",
+          "Before even reaching the data, I noted:", "By the end of the introduction, one question remained:", "In the abstract already, I scribbled:"] },
       revise: { title: "Major concerns", intro: [
         "My main concerns are about the empirical strategy.",
         "The analysis raises several serious concerns.",
-        "I now turn to the substance, such as it is."] },
+        "I now turn to the substance, such as it is."],
+        where: [
+          "Reaching the empirical section, I noted:", "Looking at Table 2, my first reaction was:", "Turning to identification, I wrote in the margin:",
+          "By the robustness section, the thought was:", "Here I stopped reading for a moment:", "Staring at the main specification, I could only think:",
+          "Next to the event-study figure, I wrote:", "Somewhere around equation (4), I sighed:", "Flipping to the appendix for reassurance, I found instead:"] },
       reject: { title: "Fundamental problems", intro: [
         "More fundamentally, the paper has problems that no revision can fix.",
-        "Finally, and most importantly:",
-        "I come now to the reasons why this paper cannot be published, here or anywhere."] }
+        "Finally, and most importantly.",
+        "I come now to the reasons why this paper cannot be published, here or anywhere."],
+        where: [
+          "By page ten, my verdict was forming:", "It was here that I wrote, in capitals:", "Putting the paper down for coffee, I thought:",
+          "Picking it up again, I could only add:", "In red ink, underlined:", "On the last page I read, I concluded:",
+          "Halfway through, I was already sure:", "At this point I reached for the stamp:", "My final note, written with some force:"] }
     };
+    var THEN = ["A little later:", "Then:", "Shortly after:", "Further on:", "Next to a footnote:", "Turning the page:"];
+    // a thought that came back while reading ({n}: twice, three times, ...)
     var REPEATS = [
-      "I made this point {n} during the seminar, and I will not apologise for the repetition.",
-      "I raised this {n} during the seminar; the authors did not seem to hear.",
-      "(Raised {n} during the seminar, for emphasis.)",
-      "I said this {n}, and I would say it again."
+      "The thought came back {n} as I read on.",
+      "I wrote this in the margin {n}, in increasingly large letters.",
+      "It crossed my mind {n}, each time with more conviction.",
+      "I underlined it {n}.",
+      "By the end, this note appeared {n} in the margins.",
+      "The thought would not go away; it came back {n}.",
+      "I returned to this {n}, and each time it was worse.",
+      "I found myself thinking it {n}, which says something.",
+      "This occurred to me {n}, on pages I would rather forget."
     ];
     var CLOSINGS = [
       "I hope these comments will be useful to the authors, in this or in another career.",
       "I wish the authors the best of luck with this paper, which they will need.",
       "I look forward to reading the next version, or rather to being asked to."
     ];
-    var CONNECT = ["First,", "Second,", "Third,"];
-    var MORE = ["Moreover,", "In addition,", "Also,", "Furthermore,", "What is more,", "On top of this,", "Not to mention that", "Let me add that", "Equally worrying,", "Besides,"];
 
     function pick(a) { return a[Math.floor(Math.random() * a.length)]; }
     function lowerFirst(t) { return /^(I\b|I'|[A-Z]{2})/.test(t) ? t : t.charAt(0).toLowerCase() + t.slice(1); }
@@ -1842,22 +1860,23 @@
         list.push(seen[k]);
       });
       var out = { opening: pick(OPENINGS), sections: [], closing: pick(CLOSINGS) };
-      var repeats = [];  // each "I said this n times" line once per report
+      var repeats = [];  // each repetition line once per report, as long as there are new ones
       function repeatLine(n) {
         if (!repeats.length) repeats = REPEATS.slice();
         var line = repeats.splice(Math.floor(Math.random() * repeats.length), 1)[0];
-        return line.replace("{n}", n === 2 ? "twice" : n === 3 ? "three times" : n + " times");
+        var words = ["", "once", "twice", "three times", "four times", "five times", "six times", "seven times", "eight times", "nine times", "ten times"];
+        return line.replace("{n}", words[n] || n + " times");
       }
       ORDER.forEach(function (sev) {
         var items = list.filter(function (c) { return c.severity === sev; });
         if (!items.length) return;
+        var where = SECTIONS[sev].where.slice(), then = THEN.slice();
         var parts = [pick(SECTIONS[sev].intro)];
-        var more = MORE.slice();
-        items.forEach(function (c, i) {
-          var conn = items.length === 1 ? "" : (i === items.length - 1 && i > 1 ? "Finally," : i < CONNECT.length ? CONNECT[i]
-            : (more.length ? more : (more = MORE.slice())).splice(Math.floor(Math.random() * more.length), 1)[0]);
-          var s = (conn ? conn + " " + lowerFirst(c.text) : c.text);
-          s = sentence(s);
+        items.forEach(function (c) {
+          var pool = where.length ? where : then.length ? then : (then = THEN.slice());
+          var lead = pool.splice(Math.floor(Math.random() * pool.length), 1)[0];
+          var s = lead + " \u201C" + c.text.replace(/\s+$/, "") + "\u201D";
+          if (!/[.!?]$/.test(c.text.trim())) s += ".";
           if (c.n > 1) s += " " + repeatLine(c.n);
           parts.push(s);
         });
@@ -2053,7 +2072,7 @@
       [/footnote/i, ["We tried to turn the paper into a footnote, but the footnote asked for its own appendix."]],
       [/prove anything/i, ["With this sample one can indeed prove anything, which is why we were careful to prove only one thing."]],
       [/decorative/i, ["The theory section is no longer decorative: it is now load-bearing, and a structural engineer has signed it off."]],
-      [/different field/i, ["We considered a different field, but they had already received a report from the referee."]],
+      [/different field/i, ["We did consider moving to a different field. Unfortunately, this referee reviews for their journals too."]],
       [/do not resubmit/i, ["We will not resubmit. We will submit, which is different."]],
       [/however/i, ["We thank the referee for the \u201Cinteresting\u201D, and we have learned to fear the \u201Chowever\u201D."]],
       [/what we learn/i, ["What we learn is now stated in a box at the top of page 1, with an arrow pointing at it."]],
