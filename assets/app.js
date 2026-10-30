@@ -94,6 +94,7 @@
       title: typeof raw.title === "string" ? raw.title.slice(0, 200) : "",
       presenter: typeof raw.presenter === "string" ? raw.presenter.slice(0, 120) : "",
       started: typeof raw.started === "string" ? raw.started : new Date().toISOString(),
+      days: Math.max(0, Math.min(9999, parseInt(raw.days, 10) || 0)),
       log: (Array.isArray(raw.log) ? raw.log : []).filter(function (e) { return e && typeof e.text === "string"; }).slice(-500)
         .map(function (e) { return { text: e.text.slice(0, 140), severity: SEVERITIES.indexOf(e.severity) >= 0 ? e.severity : "comment", t: e.t || "" }; })
     };
@@ -1377,6 +1378,7 @@
     var d = decide(s.log);
     $("report-ms").textContent = s.ms;
     $("report-round").textContent = String(s.round);
+    $("report-days").textContent = s.days ? " \u00B7 " + s.days + " days under review" : "";
     $("report-title-input").value = s.title || "";
     $("report-presenter").value = s.presenter || "";
     $("report-counts").textContent = d.n
@@ -1406,6 +1408,21 @@
       var key = s.ms + "#" + s.round + "#" + s.log.length;
       if (s.log.length && state.settings.effects && key !== lastFxKey) { lastFxKey = key; Fx.decision(decide(s.log).label, dlg); }
     });
+    // Submit to journal: the review clock runs to the decision, then the report opens (already stamped)
+    $("submit-open").addEventListener("click", function () {
+      var s = state.session;
+      if (!s.log.length) { toast("Nothing to submit yet: play a few comments first, Reviewer 2 needs something to object to."); return; }
+      stopAll();
+      var label = decide(s.log).label;
+      ReviewClock.play({ ms: s.ms, round: s.round, decision: label, effects: state.settings.effects }).then(function (days) {
+        s.days = days;
+        Stats.recordDays(days);
+        save();
+        lastFxKey = s.ms + "#" + s.round + "#" + s.log.length; // the stamp has already landed
+        renderReport();
+        dlg.showModal();
+      });
+    });
     $("report-responses").checked = !!state.settings.responses;
     $("report-responses").addEventListener("change", function (e) { state.settings.responses = e.target.checked; save(); });
     $("report-title-input").addEventListener("input", function (e) { state.session.title = e.target.value.slice(0, 200); save(); });
@@ -1414,6 +1431,7 @@
       if (state.session.log.length && !window.confirm("Start round " + (state.session.round + 1) + "? The comments of this round are cleared (download the report first if you want it).")) return;
       state.session.round += 1;
       state.session.log = [];
+      state.session.days = 0;
       save(); renderMasthead(); renderReport();
       toast("Round " + state.session.round + " of " + state.session.ms + ".");
     });
@@ -1522,6 +1540,7 @@
 
       // manuscript data
       var meta = [["Manuscript", s.ms], ["Round", String(s.round)]];
+      if (s.days) meta.push(["Under review", s.days + " days"]);
       if (s.title) meta.push(["Title", s.title]);
       if (s.presenter) meta.push(["Presented by", s.presenter]);
       meta.forEach(function (m) {
@@ -1781,7 +1800,188 @@
       setTimeout(end, happy ? 2600 : 1900);
     }
 
-    return { decision: decision, preview: function () { sound("accept"); } };
+    // the sound (and confetti for the lucky ones) of a decision, for a stamp drawn elsewhere
+    function cue(label, host) {
+      var key = label.toLowerCase().replace(/\s+/g, "-");
+      sound(key);
+      if (key === "accept" || key === "minor-revision") setTimeout(function () { confetti(host || document.body); }, 260);
+    }
+
+    return { decision: decision, cue: cue, preview: function () { sound("accept"); } };
+  })();
+
+  // ------------------------------------------------------------ submit to journal
+  // "Submit to journal" plays the manuscript's life in the editorial system: a
+  // "days under review" counter that races through the weeks and crawls through
+  // the stalls ("Awaiting Reviewer Scores (7 months)"), with the history of the
+  // submission below, until the decision stamp lands. Skip ends it at once.
+
+  var ReviewClock = (function () {
+    var pick = function (a) { return a[Math.floor(Math.random() * a.length)]; };
+    var chance = function (p) { return Math.random() < p; };
+
+    // The steps of a submission: the day reached, the status, the time (ms) the
+    // counter takes to get there, and whether the status stalls (amber, months counted).
+    function path(key) {
+      var s = [];
+      var add = function (day, text, ms, stall) { s.push({ day: day, text: text, ms: ms, stall: !!stall }); };
+      if (key === "desk-reject") {
+        if (chance(0.5)) { add(1, "With Editor", 500); add(2, "Decision in Process", 700); return s; }
+        add(2, "With Editor", 400);
+        if (chance(0.5)) add(23, "Editor Assigned", 700);
+        add(96, "With Editor", 2800, true);
+        add(97, "Decision in Process", 600);
+        return s;
+      }
+      add(3, "With Editor", 350);
+      add(19, "Editor Assigned", 500);
+      if (chance(0.6)) add(26, pick(["Editor changed", "Editor on leave: manuscript reassigned"]), 450);
+      add(41, "Reviewers Invited", 500);
+      add(58, "Reviewer 1 has declined the invitation", 450);
+      if (chance(0.5)) add(66, "Reviewer 3 has declined the invitation", 400);
+      add(88, "Reviewer 2 has accepted the invitation", 650);
+      add(95, "Under Review", 350);
+      add(212, "Awaiting Reviewer Scores", 2400, true);
+      add(213, pick(["Reviewer 2 has requested an extension", "Reviewer 2 is on sabbatical", "Reviewer 2 is travelling to a conference"]), 550);
+      add(301, "Awaiting Reviewer Scores", 1600, true);
+      add(340, "Required Reviews Completed", 600);
+      if (key === "accept") {
+        add(342, "Major Revision: with Authors", 400);
+        add(529, "Revision Submitted", 1000);
+        add(668, "Awaiting Reviewer Scores", 1500, true);
+        add(671, "Decision in Process", 500);
+        return s;
+      }
+      add(343, "Decision in Process", 450);
+      return s;
+    }
+
+    function closing(key, label, days) {
+      var months = Math.round(days / 30.4);
+      if (key === "desk-reject") return days < 10 ? "Desk rejected in " + days + " days. A personal best for the editor."
+        : "Desk rejected after " + days + " days. The editor read the title.";
+      if (key === "accept") return "Accepted after " + days + " days. Your tenure clock: " + (Math.round(days / 36.5) / 10) + " years shorter.";
+      if (key === "minor-revision") return days + " days to ask for a footnote.";
+      if (key === "major-revision") return days + " days for a Major Revision. See you in round 2.";
+      return "Total time under review: " + days + " days (" + months + " months). Reviewer 2 has moved on.";
+    }
+
+    var fmtDate = function (d) { return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }); };
+    var months = function (days) { var m = Math.floor(days / 30.4); return m < 1 ? "" : " (" + m + (m === 1 ? " month)" : " months)"); };
+    function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; }
+
+    function play(o) {
+      return new Promise(function (resolve) {
+        var key = o.decision.toLowerCase().replace(/\s+/g, "-");
+        var happy = key === "accept" || key === "minor-revision";
+        var steps = path(key), start = new Date();
+        var reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+        var over = el("div", "clock-overlay");
+        over.setAttribute("role", "dialog");
+        over.setAttribute("aria-label", "Submission status");
+        var card = el("div", "clock");
+        var head = el("div", "clock-head");
+        var msSpan = el("span", "", "Manuscript "); msSpan.appendChild(el("b", "", o.ms + (o.round > 1 ? ".R" + (o.round - 1) : "")));
+        head.append(msSpan, el("span", "", "Submission status"));
+        var body = el("div", "clock-body");
+        var counter = el("div", "clock-counter");
+        var daysEl = el("span", "clock-days", "0"), dateEl = el("span", "clock-date");
+        counter.append(daysEl, el("span", "clock-unit", "days under review"), dateEl);
+        var status = el("div", "clock-status"), statusText = el("span");
+        status.append(el("span", "clock-dot"), statusText);
+        var log = el("ul", "clock-log");
+        var total = el("p", "clock-total");
+        body.append(counter, status, log, total);
+        var foot = el("div", "clock-foot");
+        var btn = el("button", "ink-btn", "Skip"); btn.type = "button";
+        foot.append(el("span", "", "Elapsed time is indicative and does not include time with the authors."), btn);
+        card.append(head, body, foot);
+        over.appendChild(card);
+        document.body.appendChild(over);
+
+        var run = true, done = false, finalDay = 0, current = "", firstSeen = {};
+        var show = function (day) {
+          daysEl.textContent = day;
+          var d = new Date(start); d.setDate(d.getDate() + day); dateEl.textContent = fmtDate(d);
+        };
+        var setStatus = function (text, stall, day) {
+          status.classList.toggle("stall", stall);
+          statusText.textContent = text + (stall ? months(day) : "");
+        };
+        var addLog = function (day, text) {
+          var li = el("li"); li.append(el("span", "", "Day " + day), el("span", "", text)); log.prepend(li);
+          while (log.children.length > 12) log.lastChild.remove();
+        };
+
+        function finish(day) {
+          if (done) return;
+          done = true; run = false; finalDay = day;
+          show(day);
+          setStatus("Decision: " + o.decision, false, day);
+          addLog(day, "Decision: " + o.decision);
+          var st = el("div", "fx-stamp " + (happy ? "fx-happy" : "fx-sad"), o.decision);
+          card.appendChild(st);
+          total.textContent = closing(key, o.decision, day);
+          if (o.effects) Fx.cue(o.decision, over);
+          btn.textContent = "Read the report";
+          btn.focus();
+        }
+        function close() {
+          window.removeEventListener("keydown", onKey, true);
+          over.classList.add("fx-out");
+          setTimeout(function () { over.remove(); }, 300);
+          resolve(finalDay);
+        }
+        function skip() { finish(steps[steps.length - 1].day + 1); }
+        btn.addEventListener("click", function () { if (done) close(); else skip(); });
+        // while the clock runs the pads do not play: Space, Enter and Esc skip, then open the report
+        function onKey(e) {
+          e.stopPropagation();
+          if (e.key === " " || e.key === "Enter" || e.key === "Escape") {
+            e.preventDefault();
+            if (done) close(); else skip();
+          }
+        }
+        window.addEventListener("keydown", onKey, true);
+
+        addLog(0, "Submitted to Journal"); setStatus("Submitted to Journal", false, 0); show(0);
+        current = "Submitted to Journal";
+        btn.focus();
+        if (reduce) { steps.forEach(function (s) { addLog(s.day, s.text); }); skip(); return; }
+
+        var i = 0, from = 0, t0 = null;
+        function frame(now) {
+          if (!run) return;
+          if (t0 === null) t0 = now;
+          var step = steps[i];
+          if (!step) { finish(from + 1); return; }
+          // a stall is logged when it starts; its months count from the first time the status appeared
+          if (step.stall && !step.logged) {
+            step.logged = true;
+            if (!(step.text in firstSeen)) firstSeen[step.text] = from;
+            if (current !== step.text) addLog(from, step.text);
+            current = step.text;
+          }
+          var k = Math.min(1, (now - t0) / step.ms);
+          var e = step.stall ? 1 - Math.pow(1 - k, 2.4) : k; // stalls start fast and crawl at the end
+          var day = Math.round(from + (step.day - from) * e);
+          show(day);
+          if (step.stall) setStatus(step.text, true, day - firstSeen[step.text]);
+          if (k >= 1) {
+            if (!step.stall) {
+              setStatus(step.text, false, day); addLog(step.day, step.text); current = step.text;
+              if (!(step.text in firstSeen)) firstSeen[step.text] = step.day;
+            }
+            from = step.day; t0 = now; i++;
+          }
+          requestAnimationFrame(frame);
+        }
+        requestAnimationFrame(frame);
+      });
+    }
+
+    return { play: play };
   })();
 
   // ------------------------------------------------------------ response to the referee
@@ -2158,9 +2358,12 @@
           since: typeof raw.since === "string" ? raw.since : new Date().toISOString(),
           played: Math.max(0, parseInt(raw.played, 10) || 0),
           counts: raw.counts && typeof raw.counts === "object" ? raw.counts : {},
-          rounds: raw.rounds && typeof raw.rounds === "object" ? raw.rounds : {}
+          rounds: raw.rounds && typeof raw.rounds === "object" ? raw.rounds : {},
+          review: raw.review && typeof raw.review === "object"
+            ? { n: Math.max(0, parseInt(raw.review.n, 10) || 0), sum: Math.max(0, parseInt(raw.review.sum, 10) || 0), max: Math.max(0, parseInt(raw.review.max, 10) || 0) }
+            : { n: 0, sum: 0, max: 0 }
         };
-      } catch (e) { return { since: new Date().toISOString(), played: 0, counts: {}, rounds: {} }; }
+      } catch (e) { return { since: new Date().toISOString(), played: 0, counts: {}, rounds: {}, review: { n: 0, sum: 0, max: 0 } }; }
     }
     function persist() { try { localStorage.setItem(KEY, JSON.stringify(st)); } catch (e) { /* ignore */ } }
     function record(c, session) {
@@ -2179,7 +2382,12 @@
       if (rk.length > 400) rk.slice(0, rk.length - 400).forEach(function (k) { delete st.rounds[k]; });
       persist();
     }
-    function reset() { st = { since: new Date().toISOString(), played: 0, counts: {}, rounds: {} }; persist(); }
+    // Submit to journal: the time each submission spent under review
+    function recordDays(days) {
+      st.review.n += 1; st.review.sum += days; st.review.max = Math.max(st.review.max, days);
+      persist();
+    }
+    function reset() { st = { since: new Date().toISOString(), played: 0, counts: {}, rounds: {}, review: { n: 0, sum: 0, max: 0 } }; persist(); }
     function row(label, value) {
       var dt = document.createElement("dt"); dt.textContent = label;
       var dd = document.createElement("dd"); dd.textContent = value;
@@ -2205,6 +2413,10 @@
         row("Decisions", order.filter(function (k) { return dec[k]; }).map(function (k) { return k + " " + dec[k]; }).join(" · ") || "none yet"),
         row("Acceptance rate", rounds.length ? Math.round(100 * (dec.Accept || 0) / rounds.length) + "%" : "n/a")
       ).forEach(function (el) { dl.appendChild(el); });
+      if (st.review.n) {
+        row("Time under review", "average " + Math.round(st.review.sum / st.review.n) + " days, longest " + st.review.max
+          + " (" + st.review.n + " submission" + (st.review.n === 1 ? "" : "s") + ")").forEach(function (el) { dl.appendChild(el); });
+      }
       var worst = rounds.slice().sort(function (a, b) { return b.rejects - a.rejects || b.n - a.n; })[0];
       if (worst && worst.rejects) {
         row("Most battered paper", (worst.title ? "“" + worst.title + "”, " : "") + worst.ms + ", round " + worst.round + ": " + worst.rejects + " reject comment" + (worst.rejects > 1 ? "s" : "")).forEach(function (el) { dl.appendChild(el); });
@@ -2226,7 +2438,7 @@
       since.textContent = "Since " + new Date(st.since).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }) + ". Kept on this device only.";
       box.appendChild(since);
     }
-    return { record: record, render: render, reset: reset };
+    return { record: record, recordDays: recordDays, render: render, reset: reset };
   })();
 
   // ------------------------------------------------------------ share link

@@ -21,7 +21,8 @@
       <p class="ms-line"><span id="ms-number">Manuscript DR-2026-0000</span>, round <span id="ms-round">1</span></p>
       <div class="masthead-actions">
         <button type="button" class="text-btn" id="review-new">New review</button>
-        <button type="button" class="text-btn" id="report-open">Generate report</button>
+        <button type="button" class="text-btn" id="submit-open">Submit<span class="wide-only"> to journal</span></button>
+        <button type="button" class="text-btn" id="report-open"><span class="wide-only">Generate report</span><span class="narrow-only">Report</span></button>
         <button type="button" class="text-btn" id="edit-toggle" aria-pressed="false">Edit pads</button>
         <button type="button" class="text-btn" id="settings-open">Settings</button>
       </div>
@@ -225,7 +226,7 @@
         <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
       </button>
       <h2 id="report-heading">Referee report</h2>
-      <p class="report-meta">Manuscript <b id="report-ms">DR-0000</b>, round <b id="report-round">1</b></p>
+      <p class="report-meta">Manuscript <b id="report-ms">DR-0000</b>, round <b id="report-round">1</b><span id="report-days"></span></p>
       <label for="report-title-input">Paper title <span class="note">(optional)</span></label>
       <input type="text" id="report-title-input" maxlength="200" autocomplete="off" placeholder="On the Causal Effect of Seminars on Coffee Consumption">
       <label for="report-presenter">Presented by <span class="note">(optional)</span></label>

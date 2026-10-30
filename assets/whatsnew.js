@@ -18,6 +18,13 @@ window.DESK_REJECT_WHATSNEW = {
   ],
   releases: [
     {
+      version: "1.4.0",
+      steps: [
+        { target: "#submit-open", title: "Submit to journal", text: "Sends the manuscript to the editorial system: watch the days under review go by, the referees decline and Reviewer 2 ask for an extension, until the decision is stamped. Then the report opens." },
+        { target: "#settings-open", title: "Time under review", text: "The days each submission spent under review go in the report, in the PDF and in Settings \u2192 Statistics." }
+      ]
+    },
+    {
       version: "1.3.0",
       steps: [
         { desktop: true, title: "Updates, in their own window", text: "Check for Updates… now shows a small window with the download, a progress bar and Cancel, then Install and Relaunch, or Later to install when you quit." },

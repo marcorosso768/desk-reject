@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.4.0
+
+- New "Submit to journal" button. It plays the submission in the editorial system: a "days under review" counter that races through the weeks and crawls through the stalls ("Awaiting Reviewer Scores (7 months)"), with the history of the manuscript, until the decision is stamped; then the report opens. Skip (or Space) ends it at once.
+- The time under review goes in the report, in the PDF ("Under review: 343 days") and in Settings → Statistics (average and longest).
+
 ## 1.3.9
 
 - New Software Update window. Compact for checking, downloading and ready to install; wider, with the release notes of every version after yours, when an update is available.

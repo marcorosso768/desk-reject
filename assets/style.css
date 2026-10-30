@@ -1036,10 +1036,13 @@ html.desktop-darwin .sheet { padding-top: 10px; }
 .update-banner.indeterminate .update-banner-bar { width: 35% !important; animation: update-slide 1.2s ease-in-out infinite; }
 @keyframes update-slide { from { transform: translateX(-100%); } to { transform: translateX(300%); } }
 
-/* four masthead buttons on one line on a phone: they shrink rather than wrap */
+/* the masthead buttons on one line on a phone: shorter labels ("Submit", "Report"), and they shrink rather than wrap */
+.narrow-only { display: none; }
 @media (orientation: portrait), (max-width: 639.98px) {
-  .masthead-actions { gap: clamp(5px, 1.6vw, 8px); flex-wrap: nowrap; }
-  .masthead .text-btn { white-space: nowrap; font-size: clamp(11px, 3.45vw, 15px); padding: 3px clamp(6px, 2.1vw, 11px); }
+  .masthead-actions { gap: clamp(4px, 1.4vw, 8px); flex-wrap: nowrap; }
+  .masthead .text-btn { white-space: nowrap; font-size: clamp(11px, 3.3vw, 15px); padding: 3px clamp(5px, 1.9vw, 11px); }
+  .masthead .wide-only { display: none; }
+  .masthead .narrow-only { display: inline; }
 }
 
 /* swipe between pad banks: a short slide in the direction of the finger */
@@ -1111,6 +1114,42 @@ html, body { overscroll-behavior-x: none; }
 }
 @keyframes fx-dim { from { background: rgba(22, 24, 28, 0); } }
 @media (prefers-reduced-motion: reduce) { .fx-stamp { animation: none; } }
+
+/* ---------- submit to journal: the review clock ---------- */
+.clock-overlay {
+  position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 16px;
+  background: rgba(22, 24, 28, .38); animation: fx-dim .2s ease-out;
+}
+.clock-overlay.fx-out { opacity: 0; transition: opacity .3s; }
+.clock {
+  width: min(540px, 100%); background: var(--paper); color: var(--ink); border: 1px solid var(--rule);
+  border-radius: 10px; box-shadow: var(--shadow); overflow: hidden; position: relative;
+}
+.clock-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px;
+  padding: 11px 18px; border-bottom: 1px solid var(--rule); background: var(--tint); font-size: 13px; color: var(--ink-soft); }
+.clock-head b { color: var(--ink); font-family: var(--tt); font-weight: 400; }
+.clock-body { padding: 16px 18px 6px; }
+.clock-counter { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.clock-days { font-family: var(--tt); font-size: clamp(50px, 13vw, 72px); line-height: 1; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+.clock-unit { font-size: 15px; color: var(--ink-soft); }
+.clock-date { margin-left: auto; font-family: var(--tt); font-size: 13px; color: var(--ink-soft); }
+.clock-status { margin: 12px 0 4px; display: flex; align-items: center; gap: 10px; font-size: 17px; font-weight: 700; min-height: 26px; }
+.clock-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--blue); flex: none; }
+.clock-status.stall { color: #b7791f; }
+.clock-status.stall .clock-dot { background: #b7791f; animation: clock-blink 1s steps(2) infinite; }
+@media (prefers-color-scheme: dark) { .clock-status.stall { color: #e8b04f; } .clock-status.stall .clock-dot { background: #e8b04f; } }
+@keyframes clock-blink { 50% { opacity: .25; } }
+/* newest at the bottom; the oldest scroll away at the top */
+.clock-log { list-style: none; margin: 10px 0 0; padding: 9px 0 0; border-top: 1px dashed var(--rule); max-height: 172px; overflow: hidden;
+  display: flex; flex-direction: column-reverse; font-size: 13.5px; }
+.clock-log li { display: grid; grid-template-columns: 74px 1fr; gap: 10px; padding: 3px 0; color: var(--ink-soft); animation: clock-in .25s ease-out; }
+.clock-log li:first-child { color: var(--ink); }
+.clock-log li span:first-child { font-family: var(--tt); font-size: 12.5px; }
+@keyframes clock-in { from { opacity: 0; transform: translateY(-4px); } }
+.clock-total { margin: 8px 0 0; text-align: center; font-size: 14px; font-style: italic; color: var(--ink-soft); min-height: 1.4em; }
+.clock-foot { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 8px 18px 14px; font-size: 12.5px; color: var(--ink-soft); font-style: italic; }
+.clock-foot .ink-btn { font-style: normal; flex: none; }
+.clock .fx-stamp { position: absolute; left: 50%; top: 44%; translate: -50% -50%; font-size: clamp(28px, 8vw, 54px); pointer-events: none; }
 
 /* ---------- what's new tour ---------- */
 .tour { position: fixed; inset: 0; z-index: 60; }
