@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self'; style-src 'self'; script-src 'self'">
-<title>Updating Desk Reject</title>
+<title>Software Update</title>
 <link rel="stylesheet" href="update-window.css">
 </head>
 <body>
@@ -15,14 +15,16 @@
     <div class="body">
       <p class="title" id="title">Checking for updates…</p>
       <p class="subtitle" id="subtitle" hidden></p>
-      <ul class="notes" id="notes" hidden></ul>
+      <p class="label" id="notes-label" hidden>Release Notes:</p>
+      <div class="notes" id="notes" hidden></div>
       <div class="track" id="track"><div class="bar" id="bar"></div></div>
+      <label class="auto" id="auto-row" hidden><input type="checkbox" id="auto"> Automatically download and install updates in the future</label>
       <div class="foot">
         <button type="button" id="tertiary" hidden>Skip This Version</button>
         <span class="detail" id="detail"></span>
         <span class="buttons">
-          <button type="button" id="secondary" hidden>Later</button>
-          <button type="button" id="primary" class="default" hidden>Install and Relaunch</button>
+          <button type="button" id="secondary" hidden>Remind Me Later</button>
+          <button type="button" id="primary" class="default" hidden>Install Update</button>
           <button type="button" id="cancel">Cancel</button>
         </span>
       </div>

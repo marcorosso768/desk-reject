@@ -111,6 +111,12 @@ const UpdateUI = (() => {
   let uw = null, state = null, onAction = null;
   ipcMain.on("upd:action", (e, action) => {
     if (!uw || e.sender !== uw.webContents) return;
+    // the "Automatically download and install updates" checkbox: a preference, not an answer
+    if (action === "auto:on" || action === "auto:off") {
+      writePrefs(Object.assign(readPrefs(), { autoUpdate: action === "auto:on" }));
+      if (state) state.auto = action === "auto:on";
+      return;
+    }
     const fn = onAction;
     if (fn) fn(action);
   });
@@ -119,7 +125,7 @@ const UpdateUI = (() => {
     uw = new BrowserWindow({
       ...centredBounds(size[0], size[1]), useContentSize: true,
       resizable: false, minimizable: false, maximizable: false, fullscreenable: false,
-      title: "Updating Desk Reject",
+      title: (state && state.windowTitle) || "Software Update",
       show: false,
       backgroundColor: nativeTheme.shouldUseDarkColors ? "#2a2a2c" : "#ececec",
       webPreferences: { preload: path.join(__dirname, "update-preload.js"), contextIsolation: true, sandbox: true, nodeIntegration: false }
@@ -133,7 +139,8 @@ const UpdateUI = (() => {
     uw.on("closed", () => { uw = null; });
     uw.loadURL(ORIGIN + "/electron/update-window.html");
   }
-  // st: { title, detail?, progress (0-1, or null = indeterminate), transferred?, total?, cancel?, primary?, secondary? }
+  // st: { windowTitle?, title, subtitle?, notes? ([{version, date?, items}]), notesLabel?, auto? (checkbox),
+  //       detail?, progress (0-1, or null = indeterminate), transferred?, total?, cancel?, primary?, secondary?, tertiary? }
   let size = [600, 112];
   function set(st, handler) {
     state = st;
@@ -147,6 +154,7 @@ const UpdateUI = (() => {
       uw.setPosition(Math.round(wa.x + (wa.width - w) / 2), Math.round(wa.y + (wa.height - h) / 2));
     }
     size = want;
+    if (uw) uw.setTitle(st.windowTitle || "Software Update");
     if (uw && !uw.webContents.isLoading()) uw.webContents.send("upd:state", st);
     if (win) {
       if (typeof st.progress === "number") win.setProgressBar(st.progress);
@@ -188,7 +196,7 @@ function downloadInstaller(asset, version) {
   const ses = win.webContents.session;
   let item = null, cancelled = false;
   UpdateUI.open();
-  UpdateUI.set({ title: "Downloading Desk Reject " + version + "…", progress: null, busy: true, cancel: true }, (action) => {
+  UpdateUI.set({ windowTitle: "Updating Desk Reject", title: "Downloading update…", progress: null, busy: true, cancel: true }, (action) => {
     if (action === "cancel" || action === "closed") { cancelled = true; if (item) item.cancel(); UpdateUI.close(); }
   });
   ses.once("will-download", (_e, it) => {
@@ -198,7 +206,7 @@ function downloadInstaller(asset, version) {
     item.setSavePath(target);
     item.on("updated", () => {
       const total = item.getTotalBytes() || asset.size || 0, got = item.getReceivedBytes();
-      UpdateUI.set({ title: "Downloading Desk Reject " + version + "…", progress: total ? got / total : null, busy: true,
+      UpdateUI.set({ windowTitle: "Updating Desk Reject", title: "Downloading update…", progress: total ? got / total : null, busy: true,
                      detail: fmtMB(got) + (total ? " of " + fmtMB(total) : ""), cancel: true });
     });
     item.once("done", async (_e2, st) => {
@@ -231,15 +239,21 @@ function canSelfInstall() {
   return !macUpdater.selfInstallBlocker(macUpdater.currentBundlePath(process.execPath));
 }
 
-async function installMacUpdate(rel, repo, version) {
+// opts.background: the automatic update. The download runs without a window
+// (progress in the Dock only), and the window appears once the update is ready,
+// with the release notes. Returns false if it failed, so the caller can offer
+// the update the usual way.
+async function installMacUpdate(rel, repo, version, opts = {}) {
+  const bg = !!opts.background;
   const yml = (rel.assets || []).find((a) => a.name === "latest-mac.yml");
   const abort = new AbortController();
   let cancelled = false;
   const onCancel = (action) => {
     if (action === "cancel" || action === "closed") { cancelled = true; abort.abort(); UpdateUI.close(); }
   };
-  UpdateUI.open();
-  UpdateUI.set({ title: "Downloading Desk Reject " + version + "…", progress: null, busy: true, cancel: true }, onCancel);
+  const view = (st) => Object.assign({ windowTitle: "Updating Desk Reject", busy: true, cancel: true }, st);
+  if (!bg) UpdateUI.open();
+  UpdateUI.set(view({ title: "Downloading update…", progress: null }), onCancel);
   try {
     if (!yml) throw new Error("the release has no latest-mac.yml");
     const res = await net.fetch(yml.browser_download_url, { signal: abort.signal });
@@ -259,29 +273,50 @@ async function installMacUpdate(rel, repo, version) {
         if (p.total && p.transferred >= p.total) {
           // download done: checksum, unzip and signature check follow
           unpacking = true;
-          UpdateUI.set({ title: "Verifying and extracting the update…", progress: null, busy: true, detail: fmtMB(p.total), cancel: true });
+          UpdateUI.set(view({ title: "Extracting update…", progress: null, detail: fmtMB(p.total) }));
           return;
         }
-        UpdateUI.set({ title: "Downloading Desk Reject " + info.version + "…", progress: p.total ? p.transferred / p.total : null, busy: true,
-                       transferred: p.transferred, total: p.total, cancel: true });
+        UpdateUI.set(view({ title: "Downloading update…", progress: p.total ? p.transferred / p.total : null,
+                            transferred: p.transferred, total: p.total }));
       }
     });
-    if (cancelled) return;
-    // Ready: Install and Relaunch now, or Later (installed when the app quits).
-    UpdateUI.set({ offer: true, size: [600, 150], title: "Desk Reject " + info.version + " is ready",
-                   subtitle: "Restart to finish the update. If you choose Later, it will be installed when you quit.",
-                   primary: "Restart Now", secondary: "Later" }, (action) => {
-      if (action === "primary") { UpdateUI.close(); launch({ relaunch: true }); app.quit(); }
-      else { pendingMacInstaller = launch; UpdateUI.close(); }
+    if (cancelled) return true;
+    const installNow = () => { UpdateUI.close(); launch({ relaunch: true }); app.quit(); };
+    const onQuit = () => { pendingMacInstaller = launch; UpdateUI.close(); };
+    if (!bg) {
+      // after Install Update: "Ready to Install", full bar, Install and Relaunch
+      // (closing the window installs it when the app quits)
+      UpdateUI.set(view({ title: "Ready to Install", progress: 1, busy: false, cancel: false, detail: "",
+                          primary: "Install and Relaunch" }), (action) => {
+        if (action === "primary") installNow(); else onQuit();
+      });
+      return true;
+    }
+    // downloaded in the background: "A new version is ready to install!"
+    UpdateUI.open();
+    const notes = opts.notes || [];
+    UpdateUI.set({
+      offer: true, windowTitle: "Software Update", size: [620, notes.length ? 430 : 210],
+      title: "A new version of Desk Reject is ready to install!",
+      subtitle: "Desk Reject " + info.version + " has been downloaded and is ready to use! Would you like to install it and relaunch Desk Reject now?",
+      notes, notesLabel: true, auto: !!readPrefs().autoUpdate,
+      tertiary: "Skip This Version", secondary: "Install on Quit", primary: "Install and Relaunch"
+    }, (action) => {
+      if (action === "primary") installNow();
+      else if (action === "tertiary") { writePrefs(Object.assign(readPrefs(), { skip: info.version })); UpdateUI.close(); }
+      else onQuit(); // Install on Quit, or the window closed
     });
+    return true;
   } catch (err) {
-    if (cancelled || (err && err.name === "AbortError")) return;
+    if (cancelled || (err && err.name === "AbortError")) return true;
+    if (bg) { UpdateUI.close(); return false; }
     // Could not update in place: fall back to downloading the dmg.
     const asset = pickAsset(rel.assets || []);
     await failed("The update could not be installed automatically",
       String(err.message || err) + (asset ? "\n\nThe installer will be downloaded instead." : ""));
     if (asset) downloadInstaller(asset, version);
     else shell.openExternal(releasesURL(repo, rel));
+    return true;
   }
 }
 
@@ -301,25 +336,31 @@ function releaseNotes(rel) {
 }
 
 // What's new, for the update window: the CHANGELOG.md bullets of every version
-// after the installed one, as plain text (the box scrolls).
+// after the installed one, newest first, one block per version (the box scrolls).
 async function changelogNotes(repo, latest, current, signal) {
-  const clean = (t) => {
-    t = t.replace(/^\s*[-*]\s+/, "").replace(/\*\*|`/g, "").replace(/\*([^*]+)\*/g, "$1").trim();
-    return t;
-  };
+  const clean = (t) => t.replace(/^\s*[-*]\s+/, "").replace(/\*\*|`/g, "").replace(/\*([^*]+)\*/g, "$1").trim();
   try {
     const res = await net.fetch("https://raw.githubusercontent.com/" + repo + "/v" + latest + "/CHANGELOG.md", { signal });
     if (!res.ok) return [];
     const out = [];
-    let take = false;
+    let cur = null;
     (await res.text()).split("\n").forEach((line) => {
       const h = /^##\s+v?(\d+\.\d+\.\d+)/.exec(line);
-      if (h) { take = newer(h[1], current) && !newer(h[1], latest); return; }
-      if (take && /^\s*[-*]\s+/.test(line)) out.push(clean(line));
+      if (h) {
+        cur = newer(h[1], current) && !newer(h[1], latest) ? { version: h[1], items: [] } : null;
+        if (cur) out.push(cur);
+        return;
+      }
+      if (cur && /^\s*[-*]\s+/.test(line)) cur.items.push(clean(line));
     });
-    return out.slice(0, 12);
+    return out.filter((r) => r.items.length).slice(0, 10);
   } catch (_) { return []; }
 }
+
+const shortDate = (iso) => {
+  const d = new Date(iso);
+  return isNaN(d) ? "" : d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+};
 
 let checking = false;
 async function checkForUpdates(manual) {
@@ -334,7 +375,7 @@ async function checkForUpdates(manual) {
   let cancelled = false;
   if (manual) {
     UpdateUI.open();
-    UpdateUI.set({ title: "Checking for updates…", progress: null, busy: true, cancel: true }, (action) => {
+    UpdateUI.set({ windowTitle: "Software Update", title: "Checking for updates…", progress: null, busy: true, cancel: true }, (action) => {
       if (action === "cancel" || action === "closed") { cancelled = true; abort.abort(); UpdateUI.close(); }
     });
   }
@@ -360,16 +401,26 @@ async function checkForUpdates(manual) {
     const selfInstall = canSelfInstall();
     let notes = await changelogNotes(repo, latest, current, abort.signal);
     if (cancelled) return;
-    if (!notes.length) notes = releaseNotes(rel).split("\n").map((l) => l.replace(/^\s*[-*]\s+/, "").trim()).filter(Boolean).slice(0, 8);
+    if (!notes.length) {
+      const items = releaseNotes(rel).split("\n").map((l) => l.replace(/^\s*[-*]\s+/, "").trim()).filter(Boolean).slice(0, 8);
+      if (items.length) notes = [{ version: latest, items }];
+    }
+    if (notes.length && notes[0].version === latest) notes[0].date = shortDate(rel.published_at);
+    // Automatic updates (macOS, set with the checkbox): at startup, download and
+    // prepare it silently, then say it is ready to install
+    if (!manual && selfInstall && prefs.autoUpdate) {
+      if (await installMacUpdate(rel, repo, latest, { background: true, notes })) return;
+    }
     // "A new version is available": in the update window, Sparkle style
     const response = await new Promise((resolve) => {
       UpdateUI.open();
       UpdateUI.set({
-        offer: true, size: [600, notes.length ? 360 : 170],
-        title: "Desk Reject " + latest + " is available",
-        subtitle: "You have version " + current + ". Would you like to install it now?",
-        notes,
-        tertiary: "Skip This Version", secondary: "Later",
+        offer: true, windowTitle: "Software Update", size: [620, notes.length ? 430 : 200],
+        title: "A new version of Desk Reject is available!",
+        subtitle: "Desk Reject " + latest + " is now available\u2014you have " + current + ". Would you like to " + (selfInstall ? "install" : "download") + " it now?",
+        notes, notesLabel: true,
+        auto: selfInstall ? !!prefs.autoUpdate : undefined,
+        tertiary: "Skip This Version", secondary: "Remind Me Later",
         primary: selfInstall ? "Install Update" : "Download Update"
       }, (action) => resolve(action));
     });
@@ -383,7 +434,7 @@ async function checkForUpdates(manual) {
       }
     } else {
       UpdateUI.close();
-      if (response === "tertiary") writePrefs(Object.assign(prefs, { skip: latest }));
+      if (response === "tertiary") writePrefs(Object.assign(readPrefs(), { skip: latest }));
     }
   } catch (e) {
     if (cancelled || (e && e.name === "AbortError")) return;

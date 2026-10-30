@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3.9
+
+- New Software Update window. "A new version of Desk Reject is available!" shows the release notes of every version after yours, with date, and Skip This Version, Remind Me Later and Install Update.
+- Automatic updates (macOS). With "Automatically download and install updates in the future" checked, the update is downloaded in the background and a window says it is ready to install: Install and Relaunch, Install on Quit or Skip This Version.
+- After Install Update, the window shows the download and then "Ready to Install" with Install and Relaunch.
+
 ## 1.3.8
 
 - Update windows reworked. "Update available" lists the full changes and offers Install Update; "ready" says Restart Now or Later, without a progress bar; larger buttons.
