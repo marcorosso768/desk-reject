@@ -4,5 +4,6 @@ const { contextBridge, ipcRenderer } = require("electron");
 contextBridge.exposeInMainWorld("updateWindow", {
   platform: process.platform,
   onState: (cb) => ipcRenderer.on("upd:state", (_e, st) => cb(st)),
-  send: (action) => ipcRenderer.send("upd:action", String(action))
+  send: (action) => ipcRenderer.send("upd:action", String(action)),
+  resize: (height) => ipcRenderer.send("upd:resize", Number(height) || 0)
 });

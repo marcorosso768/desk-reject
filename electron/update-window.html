@@ -3,33 +3,32 @@
 <head>
 <meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self'; style-src 'self'; script-src 'self'">
-<title>Software Update</title>
+<title>Updating Desk Reject</title>
 <link rel="stylesheet" href="update-window.css">
 </head>
 <body>
-  <main class="upd">
-    <picture class="icon">
-      <source id="icon-dark" media="(prefers-color-scheme: dark)" srcset="../assets/icons/icon-mac-1024-dark.png">
-      <img id="icon" src="../assets/icons/icon-mac-1024.png" alt="" width="64" height="64">
-    </picture>
-    <div class="body">
-      <p class="title" id="title">Checking for updates…</p>
-      <p class="subtitle" id="subtitle" hidden></p>
-      <p class="label" id="notes-label" hidden>Release Notes:</p>
-      <div class="notes" id="notes" hidden></div>
-      <div class="track" id="track"><div class="bar" id="bar"></div></div>
-      <label class="auto" id="auto-row" hidden><input type="checkbox" id="auto"> Automatically download and install updates in the future</label>
-      <div class="foot">
-        <button type="button" id="tertiary" hidden>Skip This Version</button>
-        <span class="detail" id="detail"></span>
-        <span class="buttons">
-          <button type="button" id="secondary" hidden>Remind Me Later</button>
-          <button type="button" id="primary" class="default" hidden>Install Update</button>
-          <button type="button" id="cancel">Cancel</button>
-        </span>
+  <div class="panel">
+    <div class="wrap">
+      <picture class="icon">
+        <source id="icon-dark" media="(prefers-color-scheme: dark)" srcset="../assets/icons/icon-mac-1024-dark.png">
+        <img id="icon" src="../assets/icons/icon-mac-1024.png" alt="" width="64" height="64">
+      </picture>
+      <div class="main">
+        <div id="title"></div>
+        <div id="message"></div>
+        <div id="notes-label"></div>
+        <div id="notes"></div>
+        <label id="check" class="hidden"><input type="checkbox" id="check-box"> <span id="check-label"></span></label>
+        <div id="bar" class="bar hidden"><div></div></div>
       </div>
     </div>
-  </main>
+    <!-- full width: "Skip This Version" sits at the left edge, under the icon (as in Sparkle) -->
+    <div class="foot">
+      <div id="left-buttons"></div>
+      <div id="detail"></div>
+      <div id="buttons"></div>
+    </div>
+  </div>
   <script src="update-window.js"></script>
 </body>
 </html>

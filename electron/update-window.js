@@ -1,4 +1,5 @@
-/* The update window: shows what the main process sends, and sends back the buttons. */
+/* Update window: draws the state sent by the main process (title, message, notes, progress,
+   details, buttons) and sends back the id of the button pressed. */
 "use strict";
 (function () {
   var $ = function (id) { return document.getElementById(id); };
@@ -7,53 +8,76 @@
     // other systems: the full-tile icons
     $("icon").src = "../assets/icons/icon-512.png";
     $("icon-dark").srcset = "../assets/icons/icon-512-dark.png";
-    document.body.classList.add(api.platform === "win32" ? "win" : "linux");
   }
-  function mb(n) { return (n / 1048576).toFixed(1) + " MB"; }
-  function show(id, on, text) { $(id).hidden = !on; if (on && text !== undefined) $(id).textContent = text; }
-  api.onState(function (st) {
-    document.body.classList.toggle("offer", !!st.offer);
-    $("title").textContent = st.title || "";
-    show("subtitle", !!st.subtitle, st.subtitle);
-    // progress
-    var indeterminate = st.progress === null || st.progress === undefined;
-    $("track").classList.toggle("indeterminate", indeterminate);
-    $("bar").style.width = indeterminate ? "" : Math.round(Math.max(0, Math.min(1, st.progress)) * 1000) / 10 + "%";
-    $("detail").textContent = st.detail !== undefined ? st.detail
-      : (st.transferred !== undefined ? mb(st.transferred) + (st.total ? " of " + mb(st.total) : "") : "");
-    // release notes: one block per version, newest first
-    var notes = $("notes");
-    notes.replaceChildren();
-    (st.notes || []).forEach(function (r) {
-      var box = document.createElement("section"); box.className = "rel";
+
+  // The window takes the height of its content, asked again whenever the layout changes
+  // (new state, text wrapping), but only when the height really changes.
+  var lastHeight = 0;
+  function reportHeight() {
+    var cs = getComputedStyle(document.body);
+    var h = Math.ceil(document.querySelector(".panel").getBoundingClientRect().height + parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom));
+    if (h !== lastHeight) { lastHeight = h; api.resize(h); }
+  }
+  new ResizeObserver(reportHeight).observe(document.querySelector(".panel"));
+
+  // Release notes: one block per version, newest first (text only, never HTML).
+  var notesSig = "";
+  function renderNotes(notes) {
+    var sig = JSON.stringify(notes || []);
+    if (sig === notesSig) return;            // progress updates do not reset the scroll position
+    notesSig = sig;
+    var box = $("notes");
+    box.textContent = "";
+    (notes || []).forEach(function (r) {
+      var sec = document.createElement("section"); sec.className = "rel";
       var head = document.createElement("div"); head.className = "rel-head";
       var v = document.createElement("b"); v.textContent = "v" + r.version;
       var d = document.createElement("span"); d.textContent = r.date || "";
       head.append(v, d);
       var ul = document.createElement("ul");
       r.items.forEach(function (t) { var li = document.createElement("li"); li.textContent = t; ul.appendChild(li); });
-      box.append(head, ul);
-      notes.appendChild(box);
+      sec.append(head, ul);
+      box.appendChild(sec);
     });
-    var hasNotes = !!(st.notes && st.notes.length);
-    show("notes", hasNotes);
-    show("notes-label", hasNotes && !!st.notesLabel);
-    show("auto-row", st.auto !== undefined);
-    if (st.auto !== undefined) $("auto").checked = !!st.auto;
-    // buttons
-    show("tertiary", !!st.tertiary, st.tertiary);
-    show("secondary", !!st.secondary, st.secondary);
-    show("primary", !!st.primary, st.primary);
-    show("cancel", !!st.cancel);
-    if (st.primary) $("primary").focus();
-  });
-  $("cancel").addEventListener("click", function () { api.send("cancel"); });
-  $("primary").addEventListener("click", function () { api.send("primary"); });
-  $("secondary").addEventListener("click", function () { api.send("secondary"); });
-  $("tertiary").addEventListener("click", function () { api.send("tertiary"); });
-  $("auto").addEventListener("change", function (e) { api.send(e.target.checked ? "auto:on" : "auto:off"); });
-  document.addEventListener("keydown", function (e) {
-    if (e.key === "Escape") api.send(!$("cancel").hidden ? "cancel" : "secondary");
-    if (e.key === "Enter" && !$("primary").hidden && e.target.tagName !== "INPUT") api.send("primary");
-  });
+    box.scrollTop = 0;
+  }
+
+  function render(s) {
+    if (s.accent) document.documentElement.style.setProperty("--accent", s.accent);
+    $("title").textContent = s.title || "";
+    $("message").textContent = s.message || "";
+    $("notes-label").textContent = s.notesLabel || "";
+    renderNotes(s.notes);
+    document.body.classList.toggle("has-notes", !!(s.notes && s.notes.length));
+    $("check").classList.toggle("hidden", !s.checkbox);
+    if (s.checkbox) { $("check-label").textContent = s.checkbox.label; $("check-box").checked = !!s.checkbox.checked; }
+    $("detail").textContent = s.detail || "";
+    var bar = $("bar");
+    bar.classList.toggle("hidden", s.progress == null);
+    bar.classList.toggle("indeterminate", s.progress === "indeterminate");
+    bar.firstElementChild.style.width = typeof s.progress === "number" ? s.progress + "%" : "";
+    // rebuild the buttons only when they change, so progress updates do not steal focus
+    var box = $("buttons"), left = $("left-buttons");
+    var sig = JSON.stringify(s.buttons || []);
+    if (box.dataset.sig !== sig) {
+      box.dataset.sig = sig;
+      box.textContent = ""; left.textContent = "";
+      // macOS order: buttons marked `left` at the far left; secondary then default button on the right
+      (s.buttons || []).slice().reverse().forEach(function (b) {
+        var el = document.createElement("button");
+        el.type = "button";
+        el.textContent = b.label;
+        if (b.primary) el.className = "primary";
+        el.addEventListener("click", function () { api.send(b.id); });
+        (b.left ? left : box).appendChild(el);
+      });
+      var primary = box.querySelector(".primary");
+      if (primary) primary.focus();
+    }
+    reportHeight();
+  }
+
+  $("check-box").addEventListener("change", function (e) { api.send(e.target.checked ? "auto:on" : "auto:off"); });
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape") api.send("escape"); });
+  api.onState(render);
 })();
