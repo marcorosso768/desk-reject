@@ -504,16 +504,29 @@ app.on("will-quit", () => globalShortcut.unregisterAll());
 
 // The page builds the PDF (the same file the web app downloads); here it is
 // written where the user chooses, starting from the Documents folder.
+let lastPdfDir = null; // the folder chosen last time, for the next report
 async function saveReportPdf(name, bytes) {
   if (!win || !bytes) return { ok: false };
   const safe = String(name).replace(/[\\/:*?"<>|]+/g, "-") || "report.pdf";
-  const { canceled, filePath } = await dialog.showSaveDialog(win, {
+  const opts = {
     title: "Save referee report",
-    defaultPath: path.join(app.getPath("documents"), safe),
+    defaultPath: path.join(lastPdfDir || app.getPath("documents"), safe),
     filters: [{ name: "PDF", extensions: ["pdf"] }]
-  });
+  };
+  // macOS: a free-standing save panel, not a sheet attached to the window. With
+  // the hidden title bar, a sheet whose folder is changed could stay open out of
+  // sight and keep the window modal, so that nothing could be clicked any more.
+  const { canceled, filePath } = process.platform === "darwin"
+    ? await dialog.showSaveDialog(opts)
+    : await dialog.showSaveDialog(win, opts);
+  if (win && !win.isDestroyed()) { win.focus(); win.webContents.focus(); }
   if (canceled || !filePath) return { ok: false };
-  fs.writeFileSync(filePath, Buffer.from(bytes));
+  try {
+    fs.writeFileSync(filePath, Buffer.from(bytes));
+  } catch (err) {
+    return { ok: false, error: "The file could not be written: " + (err.code === "EACCES" || err.code === "EPERM" ? "Desk Reject has no permission for that folder." : err.message) };
+  }
+  lastPdfDir = path.dirname(filePath);
   return { ok: true, name: path.basename(filePath) };
 }
 

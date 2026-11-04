@@ -1454,7 +1454,7 @@
         var name = state.session.ms + "-round-" + state.session.round + ".pdf";
         if (desktopSave) {
           return blob.arrayBuffer().then(function (buf) { return window.deskReject.savePdf(name, new Uint8Array(buf)); })
-            .then(function (res) { if (res && res.ok) toast("Report saved: " + res.name); });
+            .then(function (res) { if (res && res.ok) toast("Report saved: " + res.name); else if (res && res.error) toast(res.error); });
         }
         var a = document.createElement("a");
         a.href = URL.createObjectURL(blob);

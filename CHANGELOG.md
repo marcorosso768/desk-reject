@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.4.1
+
+- Desktop (macOS): Save PDF opens its own save window instead of a sheet on the app window. After changing the destination folder the window could stay blocked, with nothing clickable. The next report is saved in the folder chosen last time, and a folder without permission gives a message instead of failing silently.
+
 ## 1.4.0
 
 - New "Submit to journal" button. It plays the submission in the editorial system: a "days under review" counter that races through the weeks and crawls through the stalls ("Awaiting Reviewer Scores (7 months)"), with the history of the manuscript, until the decision is stamped; then the report opens. Skip (or Space) ends it at once.
